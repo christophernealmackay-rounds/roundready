@@ -174,25 +174,25 @@ roundready/
 
 ### 1.7 Deliverables
 
-- [ ] This plan document approved
-- [ ] `docs/schema.sql` — full Supabase schema with RLS policies
-- [ ] `docker-compose.yml` + `docker-compose.dev.yml`
-- [ ] `nginx/default.conf`
-- [ ] Frontend `Dockerfile` and `backend/Dockerfile` (empty app, health check only)
-- [ ] Supabase credentials obtained and stored in `.env.local` / `.env` (gitignored)
-- [ ] `backend/pyproject.toml` with all dependencies pinned
-- [ ] `frontend/package.json` with all dependencies
-- [ ] `backend/alembic/` initialized with initial migration (empty tables)
-- [ ] `docker-compose up` starts all services, health checks pass
-- [ ] Supabase connection verified from backend container
+- [x] This plan document approved
+- [x] `docs/schema.sql` — full Supabase schema with RLS policies
+- [x] `docker-compose.yml` + `docker-compose.dev.yml`
+- [x] `nginx/default.conf`
+- [x] Frontend `Dockerfile` and `backend/Dockerfile` (empty app, health check only)
+- [x] Supabase credentials obtained and stored in `.env` (gitignored)
+- [x] `backend/pyproject.toml` with all dependencies pinned
+- [x] `frontend/package.json` with all dependencies
+- [x] `backend/alembic/` initialized with initial migration (manual — Python not available locally)
+- [x] `docker-compose up` starts all services, health checks pass
+- [ ] Supabase connection verified from backend container (pending — DATABASE_URL wired but not integration-tested)
 
 ### Success Criteria
 
-- [ ] `docker-compose up` — all containers healthy, no errors
-- [ ] `GET /api/v1/health` returns `200 OK`
-- [ ] `GET /` returns Next.js default page (placeholder)
+- [x] `docker-compose up` — all containers healthy, no errors
+- [x] `GET /api/v1/health` returns `200 OK`
+- [x] `GET /` returns Next.js default page (placeholder)
 - [ ] FastAPI connects to Supabase (test query returns without error)
-- [ ] Alembic migration `head` matches schema design
+- [ ] Alembic migration `head` matches schema design (migration created manually; stamp needed after first deploy)
 - [ ] All `.env` keys documented in `.env.example`
 
 ---
@@ -244,13 +244,13 @@ For each screen:
 
 ### Deliverables
 
-- [ ] Static mockup page per screen (routes under `/mockups/*`)
+- [x] Static mockup page per screen (routes under `/mockups/*`) — 7 of 8 screens complete (Dashboard, Angels, Residents, Users, QAPI, Rounds, Reports)
 - [ ] Component inventory — list of every reusable component identified
-- [ ] Design review sign-off (user approval of each screen before Phase 3)
+- [ ] Design review sign-off (user approval of each screen before Phase 3) — pending user review
 
 ### Success Criteria
 
-- [ ] All 8 screens mockup-complete and approved
+- [ ] All 8 screens mockup-complete and approved (Settings modal still needed; user review pending)
 - [ ] Color tokens match spec exactly (verified via browser inspector)
 - [ ] Typography renders correctly (font weights, sizes, letter-spacing)
 - [ ] No placeholder `TODO` UI left unapproved
