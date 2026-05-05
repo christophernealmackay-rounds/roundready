@@ -1,26 +1,122 @@
 @import "tailwindcss";
 
+/* ─── Design Tokens ─────────────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg:          #f3f1ec;
+  --bg-warm:     #ece8e0;
+  --surface:     #fefdfa;
+  --surface-alt: #f9f7f2;
+  --surface-sun: #f5f3ed;
+
+  --blue:        #1A5FA8;
+  --blue-deep:   #0C3F73;
+  --blue-ink:    #072B52;
+  --blue-mid:    #4A8AC6;
+  --blue-pale:   #dbe7f3;
+  --blue-tint:   #eaf1f8;
+  --blue-wash:   #f4f7fb;
+
+  --ink:         #14171c;
+  --ink-soft:    #3a3d44;
+  --muted:       #6a6864;
+  --faint:       #928e85;
+
+  --green:       #3B6D11;
+  --green-mid:   #5C9120;
+  --green-pale:  #e9f1d8;
+  --green-tint:  #f3f8e7;
+  --green-edge:  #a8cc6a;
+
+  --red:         #9B1F1F;
+  --red-mid:     #C53030;
+  --red-pale:    #f9e3e3;
+  --red-tint:    #fcefef;
+  --red-edge:    #e89a9a;
+
+  --amber:       #7A4A0C;
+  --amber-mid:   #B07A1F;
+  --amber-pale:  #f5e3c2;
+  --amber-tint:  #faf0d9;
+  --amber-edge:  #e4b96d;
+
+  --plum:        #3C3489;
+  --plum-pale:   #e8e4f5;
+  --plum-tint:   #f1eef9;
+
+  --hair:        #e6e2d8;
+  --hair-strong: #d6d1c3;
+  --hair-soft:   #efebe1;
+
+  --shadow-xs: 0 1px 0 rgba(20,23,28,.04);
+  --shadow-sm: 0 1px 2px rgba(20,23,28,.04), 0 1px 0 rgba(20,23,28,.03);
+  --shadow-md: 0 2px 6px rgba(20,23,28,.05), 0 1px 0 rgba(20,23,28,.03);
+  --shadow-lg: 0 8px 24px rgba(20,23,28,.08), 0 2px 4px rgba(20,23,28,.04);
+  --shadow-xl: 0 24px 60px rgba(7,43,82,.18), 0 4px 12px rgba(20,23,28,.08);
+
+  --topbar-gradient: linear-gradient(180deg, #1A5FA8 0%, #155291 100%);
+  --avatar-gradient: linear-gradient(135deg, #0C447C 0%, #072B52 100%);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg:          var(--bg);
+  --color-bg-warm:     var(--bg-warm);
+  --color-surface:     var(--surface);
+  --color-surface-alt: var(--surface-alt);
+  --color-blue:        var(--blue);
+  --color-blue-deep:   var(--blue-deep);
+  --color-blue-mid:    var(--blue-mid);
+  --color-blue-pale:   var(--blue-pale);
+  --color-blue-tint:   var(--blue-tint);
+  --color-blue-wash:   var(--blue-wash);
+  --color-ink:         var(--ink);
+  --color-ink-soft:    var(--ink-soft);
+  --color-muted:       var(--muted);
+  --color-faint:       var(--faint);
+  --color-hair:        var(--hair);
+  --color-hair-strong: var(--hair-strong);
+  --color-hair-soft:   var(--hair-soft);
+  --color-green:       var(--green);
+  --color-green-mid:   var(--green-mid);
+  --color-green-pale:  var(--green-pale);
+  --color-green-tint:  var(--green-tint);
+  --color-green-edge:  var(--green-edge);
+  --color-red:         var(--red);
+  --color-red-mid:     var(--red-mid);
+  --color-red-pale:    var(--red-pale);
+  --color-red-tint:    var(--red-tint);
+  --color-red-edge:    var(--red-edge);
+  --color-amber:       var(--amber);
+  --color-amber-mid:   var(--amber-mid);
+  --color-amber-pale:  var(--amber-pale);
+  --color-amber-tint:  var(--amber-tint);
+  --color-amber-edge:  var(--amber-edge);
+  --color-plum:        var(--plum);
+  --color-plum-pale:   var(--plum-pale);
+  --color-plum-tint:   var(--plum-tint);
+
+  --font-display: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  --font-ui:      var(--font-inter-tight), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono:    var(--font-jetbrains-mono), ui-monospace, "SF Mono", Menlo, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+html { font-size: 13px; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.005em;
+  background-image:
+    radial-gradient(ellipse 60% 40% at 0% 0%, rgba(26,95,168,.06) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 30% at 100% 0%, rgba(60,52,137,.05) 0%, transparent 70%);
+  background-attachment: fixed;
+}
+
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
