@@ -3,22 +3,25 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { X } from "lucide-react";
+import { useIssuesStore } from "@/lib/store";
 
-const tabs = [
-  { label: "Dashboard", href: "/mockups/dashboard" },
-  { label: "Angels",    href: "/mockups/angels" },
-  { label: "Residents", href: "/mockups/residents" },
-  { label: "Issues",    href: "/mockups/issues", badge: 3 },
-  { label: "Users",     href: "/mockups/users" },
-  { label: "QAPI",      href: "/mockups/qapi" },
-  { label: "Rounds",    href: "/mockups/rounds" },
-  { label: "Reports",   href: "/mockups/reports" },
+const NAV = [
+  { label: "Dashboard", href: "/dashboard" },
+  { label: "Angels",    href: "/angels" },
+  { label: "Residents", href: "/residents" },
+  { label: "Issues",    href: "/issues" },
+  { label: "Users",     href: "/users" },
+  { label: "QAPI",      href: "/qapi" },
+  { label: "Rounds",    href: "/rounds" },
+  { label: "Reports",   href: "/reports" },
 ];
 
 const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export default function Topbar() {
   const pathname = usePathname();
+  const openCount = useIssuesStore((s) => s.issues.filter((i) => i.status === "open").length);
+
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeDays, setActiveDays] = useState([0, 1, 2, 3, 4]);
   const [times, setTimes] = useState(["10:00 AM", "1:00 PM", "4:00 PM"]);
@@ -30,19 +33,18 @@ export default function Topbar() {
   const [pushAngelTogg, setPushAngelTogg] = useState(true);
 
   function toggleDay(i: number) {
-    setActiveDays(prev => prev.includes(i) ? prev.filter(d => d !== i) : [...prev, i].sort());
+    setActiveDays((prev) => prev.includes(i) ? prev.filter((d) => d !== i) : [...prev, i].sort());
   }
 
   function addTime(e: React.ChangeEvent<HTMLSelectElement>) {
     const t = e.target.value;
-    if (t && !times.includes(t)) setTimes(prev => [...prev, t]);
+    if (t && !times.includes(t)) setTimes((prev) => [...prev, t]);
     e.target.value = "";
   }
 
   return (
     <>
       <header className="sticky top-0 z-[100] flex flex-col" style={{ background: "var(--topbar-gradient)" }}>
-        {/* Main bar */}
         <div className="flex items-center h-[56px] px-6 gap-6">
           <span style={{ fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 500, letterSpacing: "-0.02em", color: "#fff" }}>
             RoundReady
@@ -53,8 +55,7 @@ export default function Topbar() {
           </span>
           <span style={{ fontSize: 11.5, color: "rgba(255,255,255,0.6)" }}>Sunrise Gardens SNF</span>
           <div className="flex-1" />
-          <span style={{ fontSize: 11.5, color: "rgba(255,255,255,0.5)" }}>Thu May 6, 2026</span>
-          {/* Settings gear */}
+          <span style={{ fontSize: 11.5, color: "rgba(255,255,255,0.5)" }}>Tue May 6, 2026</span>
           <button
             onClick={() => setSettingsOpen(true)}
             className="flex items-center justify-center w-8 h-8 rounded-full transition-all hover:bg-white/10"
@@ -65,22 +66,21 @@ export default function Topbar() {
               <circle cx="8" cy="8" r="2" stroke="rgba(255,255,255,0.8)" strokeWidth="1.3"/>
             </svg>
           </button>
-          {/* Avatar */}
           <div className="flex items-center justify-center w-8 h-8 rounded-full select-none" style={{ background: "var(--avatar-gradient)", fontSize: 10.5, fontWeight: 600, letterSpacing: "0.02em", color: "#fff", boxShadow: "0 0 0 2px rgba(255,255,255,0.15)" }}>
             CM
           </div>
         </div>
 
-        {/* Nav tabs */}
         <nav className="flex items-end px-6">
-          {tabs.map(tab => {
-            const active = pathname.startsWith(tab.href);
+          {NAV.map((tab) => {
+            const active = pathname === tab.href || (tab.href !== "/dashboard" && pathname.startsWith(tab.href));
+            const badge = tab.label === "Issues" ? openCount : undefined;
             return (
               <Link key={tab.href} href={tab.href} style={{ fontSize: 13, fontWeight: 500, padding: "13px 16px", color: active ? "#fff" : "rgba(255,255,255,0.6)", borderBottom: active ? "2px solid #fff" : "2px solid transparent", transition: "all 0.15s", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
                 {tab.label}
-                {tab.badge !== undefined && (
+                {badge !== undefined && badge > 0 && (
                   <span style={{ background: "var(--red-tint)", color: "var(--red)", fontSize: 10, fontWeight: 600, padding: "1px 6px", borderRadius: 10 }}>
-                    {tab.badge}
+                    {badge}
                   </span>
                 )}
               </Link>
@@ -89,15 +89,13 @@ export default function Topbar() {
         </nav>
       </header>
 
-      {/* Settings slide-out overlay */}
       {settingsOpen && (
         <div
           className="fixed inset-0 z-[300] flex items-start justify-end"
           style={{ background: "rgba(0,0,0,0.45)" }}
-          onClick={e => { if (e.target === e.currentTarget) setSettingsOpen(false); }}
+          onClick={(e) => { if (e.target === e.currentTarget) setSettingsOpen(false); }}
         >
           <div style={{ background: "var(--surface-alt)", width: "min(820px,100vw)", height: "100vh", overflowY: "auto", boxShadow: "-20px 0 60px rgba(0,0,0,0.25)", display: "flex", flexDirection: "column" }}>
-            {/* Settings header */}
             <div className="sticky top-0 z-10 flex items-center justify-between px-6 h-[56px]" style={{ background: "var(--topbar-gradient)", flexShrink: 0 }}>
               <div className="flex items-center gap-3">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6.5 2h3l.4 1.4a5 5 0 0 1 1.2.7l1.4-.4 1.5 2.6-1 1a5 5 0 0 1 0 1.4l1 1-1.5 2.6-1.4-.4a5 5 0 0 1-1.2.7L9.5 14h-3l-.4-1.4a5 5 0 0 1-1.2-.7l-1.4.4L2 9.7l1-1a5 5 0 0 1 0-1.4l-1-1L3.5 3.7l1.4.4a5 5 0 0 1 1.2-.7L6.5 2Z" stroke="rgba(255,255,255,0.85)" strokeWidth="1.3"/><circle cx="8" cy="8" r="2" stroke="rgba(255,255,255,0.85)" strokeWidth="1.3"/></svg>
@@ -115,9 +113,7 @@ export default function Topbar() {
               </button>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                {/* LEFT COL */}
                 <div>
-                  {/* Facility profile */}
                   <p style={{ fontSize: 10, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 10px" }}>Facility Profile</p>
                   <div style={{ background: "var(--surface)", border: "1px solid var(--hair)", borderRadius: 12, padding: "14px 16px", marginBottom: 16, boxShadow: "var(--shadow-sm)" }}>
                     <div style={{ marginBottom: 10 }}>
@@ -131,7 +127,6 @@ export default function Topbar() {
                     <button style={{ padding: "7px 14px", borderRadius: 7, border: "none", background: "var(--blue)", color: "#fff", fontSize: 12, fontWeight: 500, cursor: "pointer" }}>Save changes</button>
                   </div>
 
-                  {/* Integrations */}
                   <p style={{ fontSize: 10, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 10px" }}>Integrations</p>
                   <div style={{ background: "var(--surface)", border: "1px solid var(--hair)", borderRadius: 12, padding: "4px 16px", marginBottom: 16, boxShadow: "var(--shadow-sm)" }}>
                     {[
@@ -150,21 +145,19 @@ export default function Topbar() {
                     ))}
                   </div>
 
-                  {/* Census capacity */}
                   <p style={{ fontSize: 10, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 10px" }}>Census Capacity</p>
                   <div style={{ background: "var(--surface)", border: "1px solid var(--hair)", borderRadius: 12, padding: "14px 16px", boxShadow: "var(--shadow-sm)" }}>
                     <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Licensed bed capacity</div>
                     <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10 }}>Used to calculate census percentage on the dashboard.</div>
                     <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14 }}>
-                      <input type="number" value={capacity} onChange={e => setCapacity(e.target.value)} style={{ width: 80, padding: "7px 10px", border: "1px solid var(--hair)", borderRadius: 8, fontSize: 13, fontFamily: "var(--font-mono)", background: "var(--surface-alt)", color: "var(--ink)", outline: "none" }} />
+                      <input type="number" value={capacity} onChange={(e) => setCapacity(e.target.value)} style={{ width: 80, padding: "7px 10px", border: "1px solid var(--hair)", borderRadius: 8, fontSize: 13, fontFamily: "var(--font-mono)", background: "var(--surface-alt)", color: "var(--ink)", outline: "none" }} />
                       <span style={{ fontSize: 12, color: "var(--muted)" }}>licensed beds</span>
                     </div>
-                    <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, marginBottom: 8 }}>Census color guide</div>
                     {[
                       { color: "var(--green)", label: "90% and above — excellent census" },
                       { color: "var(--amber-mid)", label: "80–89% — monitor, below target" },
                       { color: "var(--red-mid)", label: "Below 80% — concern, review admissions" },
-                    ].map(g => (
+                    ].map((g) => (
                       <div key={g.label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                         <div style={{ width: 12, height: 12, borderRadius: 3, background: g.color }} />
                         <span style={{ fontSize: 12, color: "var(--muted)" }}>{g.label}</span>
@@ -173,16 +166,14 @@ export default function Topbar() {
                   </div>
                 </div>
 
-                {/* RIGHT COL */}
                 <div>
-                  {/* Notification delivery */}
                   <p style={{ fontSize: 10, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 10px" }}>Notification Delivery</p>
                   <div style={{ background: "var(--surface)", border: "1px solid var(--hair)", borderRadius: 12, padding: "4px 16px", marginBottom: 16, boxShadow: "var(--shadow-sm)" }}>
                     {[
-                      { label: "Email notifications", sub: "Completion status sent to administrator email", on: emailTogg, toggle: () => setEmailTogg(v => !v) },
-                      { label: "Push notifications — administrator", sub: "Check-in alerts to the RoundReady admin app", on: pushAdminTogg, toggle: () => setPushAdminTogg(v => !v) },
-                      { label: "SMS alerts — flagged concerns only", sub: "Text message when a concern is escalated", on: smsTogg, toggle: () => setSmsTogg(v => !v) },
-                      { label: "Push notifications — angels", sub: "Required for angel round reminders to be delivered", on: pushAngelTogg, toggle: () => setPushAngelTogg(v => !v) },
+                      { label: "Email notifications", sub: "Completion status sent to administrator email", on: emailTogg, toggle: () => setEmailTogg((v) => !v) },
+                      { label: "Push notifications — administrator", sub: "Check-in alerts to the RoundReady admin app", on: pushAdminTogg, toggle: () => setPushAdminTogg((v) => !v) },
+                      { label: "SMS alerts — flagged concerns only", sub: "Text message when a concern is escalated", on: smsTogg, toggle: () => setSmsTogg((v) => !v) },
+                      { label: "Push notifications — angels", sub: "Required for angel round reminders to be delivered", on: pushAngelTogg, toggle: () => setPushAngelTogg((v) => !v) },
                     ].map((n, i) => (
                       <div key={n.label} style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "11px 0", borderBottom: i < 3 ? "1px solid var(--hair-soft)" : undefined, gap: 12 }}>
                         <div>
@@ -196,7 +187,6 @@ export default function Topbar() {
                     ))}
                   </div>
 
-                  {/* Billing */}
                   <p style={{ fontSize: 10, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 10px" }}>Billing</p>
                   <div style={{ background: "var(--surface)", border: "1px solid var(--hair)", borderRadius: 12, padding: "14px 16px", marginBottom: 16, boxShadow: "var(--shadow-sm)" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
@@ -215,7 +205,6 @@ export default function Topbar() {
                 </div>
               </div>
 
-              {/* Rounding schedule - full width */}
               <p style={{ fontSize: 10, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 10px" }}>Rounding Schedule</p>
               <div style={{ background: "var(--surface)", border: "1px solid var(--hair)", borderRadius: 12, padding: "14px 16px", marginBottom: 16, boxShadow: "var(--shadow-sm)" }}>
                 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Active rounding days</div>
@@ -232,34 +221,30 @@ export default function Topbar() {
                 </div>
               </div>
 
-              {/* Completion notifications - full width */}
               <p style={{ fontSize: 10, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 10px" }}>Completion Notifications</p>
               <div style={{ background: "var(--surface)", border: "1px solid var(--hair)", borderRadius: 12, padding: "14px 16px", marginBottom: 16, boxShadow: "var(--shadow-sm)" }}>
                 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Administrator check-in times</div>
                 <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 12 }}>Completion status sent to administrator at each time. Notifications stop once all rounds are complete.</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
-                  {times.map(t => (
+                  {times.map((t) => (
                     <span key={t} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 500, border: "1px solid var(--blue)", background: "var(--blue-tint)", color: "var(--blue)" }}>
                       {t}
-                      <button onClick={() => setTimes(prev => prev.filter(x => x !== t))} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", color: "var(--blue)", fontSize: 14, lineHeight: 1 }}>×</button>
+                      <button onClick={() => setTimes((prev) => prev.filter((x) => x !== t))} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", color: "var(--blue)", fontSize: 14, lineHeight: 1 }}>×</button>
                     </span>
                   ))}
                 </div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
-                  <select onChange={addTime} style={{ padding: "7px 10px", border: "1px solid var(--hair)", borderRadius: 8, fontSize: 12, background: "var(--surface-alt)", color: "var(--ink)", cursor: "pointer", outline: "none" }}>
-                    <option value="">Add a time…</option>
-                    {["9:00 AM","10:00 AM","11:00 AM","12:00 PM","1:00 PM","2:00 PM","3:00 PM","4:00 PM","5:00 PM","6:00 PM"].map(t => <option key={t}>{t}</option>)}
-                  </select>
-                </div>
+                <select onChange={addTime} style={{ padding: "7px 10px", border: "1px solid var(--hair)", borderRadius: 8, fontSize: 12, background: "var(--surface-alt)", color: "var(--ink)", cursor: "pointer", outline: "none", marginBottom: 16 }}>
+                  <option value="">Add a time…</option>
+                  {["9:00 AM","10:00 AM","11:00 AM","12:00 PM","1:00 PM","2:00 PM","3:00 PM","4:00 PM","5:00 PM","6:00 PM"].map((t) => <option key={t}>{t}</option>)}
+                </select>
 
-                {/* Angel reminders */}
                 <div style={{ borderTop: "1px solid var(--hair-soft)", paddingTop: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
                     <div style={{ paddingRight: 16 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Angel round reminders</div>
                       <div style={{ fontSize: 11, color: "var(--muted)" }}>Send a push notification to each angel <strong>30 minutes before</strong> each check-in time.</div>
                     </div>
-                    <div onClick={() => setReminders(v => !v)} style={{ width: 38, height: 21, borderRadius: 11, background: reminders ? "var(--blue)" : "var(--hair-strong)", cursor: "pointer", position: "relative", flexShrink: 0, transition: "background 0.2s" }}>
+                    <div onClick={() => setReminders((v) => !v)} style={{ width: 38, height: 21, borderRadius: 11, background: reminders ? "var(--blue)" : "var(--hair-strong)", cursor: "pointer", position: "relative", flexShrink: 0, transition: "background 0.2s" }}>
                       <div style={{ position: "absolute", top: 3, left: reminders ? 20 : 3, width: 15, height: 15, borderRadius: "50%", background: "#fff", transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,.2)" }} />
                     </div>
                   </div>
