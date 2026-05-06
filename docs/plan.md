@@ -258,6 +258,92 @@ For each screen:
 
 ---
 
+## Phase 2.5 — UX Parity & Feature Enhancement
+
+**Goal:** Close the gap between the reference HTML admin dashboard and our static mockups. Adopt its pill/filter interaction patterns, add the Issues tab, enhance every existing tab, and wire the Settings slide-out panel.
+
+### 2.5.1 Global UX Patterns (applied across all tabs)
+
+- [x] Pill filter buttons with active state (blue border + tint bg + blue text)
+- [x] Clickable KPI filter cards with active visual state
+- [x] Filter banner ("Showing X only" + Clear × button)
+- [x] Row-based list items with border-bottom dividers and avatar initials
+- [x] Issues tab added to navigation with red badge (open count)
+- [x] Settings gear opens full right-side slide-out panel
+
+### 2.5.2 Dashboard Enhancements
+
+- [x] Date range pills: Today / This Week / This Month
+- [x] 5 operational KPI cards: Rounds Completed, Completion Rate, Open Issues, Resolved Today, Active Residents
+- [x] Area/line chart for daily completion rate (gradient fill)
+- [x] Dual bar chart: Issues Raised vs Resolved (side-by-side groups)
+- [x] Hourly completions mini bar chart
+- [x] Census & capacity widget with colored progress bar and bed breakdown
+- [x] Open issues panel (right column) with quick-view and "View all" link
+- [x] Active QAPI template banner (blue, links to Rounds tab)
+- [x] Angel completion today list with inline progress bars
+
+### 2.5.3 Angels Tab Enhancements
+
+- [x] 4 clickable KPI filter cards: All Angels / On Duty / Absent / Departments
+- [x] Absent bar (amber) with auto-redistribute button
+- [x] Filter banner when filtered to subset
+- [x] Per-angel Redistribute button (visible only when angel is absent)
+- [x] Per-angel Residents quick-link button
+
+### 2.5.4 Residents Tab Enhancements
+
+- [x] 4 clickable KPI filter cards: Total / Assigned / Unassigned / PCC Status
+- [x] Angel filter pills (one per angel + All)
+- [x] Auto-assign all button
+- [x] Sync from PCC button with connected/disconnected state
+
+### 2.5.5 Issues Tab (New)
+
+- [x] Dedicated Issues tab in navigation with badge showing open count
+- [x] Filter pills: Open / Resolved / All
+- [x] Issue cards: resident, room, angel, full issue text, time, date
+- [x] Resolution modal: notes textarea, resolved-by dropdown, date picker, mark resolved
+- [x] Reopen issue capability for resolved items
+- [x] Issue count synced to dashboard open issues KPI
+
+### 2.5.6 Reports Tab Enhancements
+
+- [x] QAPI template selector (active + archived)
+- [x] Resident multi-select dropdown with search and select-all
+- [x] Date range pills: This Month / Last 30 / Last 7 / Yesterday / Custom
+- [x] Report preview with summary KPIs before generating
+- [x] Export PDF, CSV, and Audit log (three distinct actions)
+- [x] Previously generated reports list with Download PDF per entry
+
+### 2.5.7 Settings Slide-Out Panel
+
+- [x] Gear icon opens full-height right-side panel overlay
+- [x] Facility profile (name, primary email)
+- [x] Integrations: PCC FHIR (NPI connect), AWS S3, Email SMTP
+- [x] Census capacity: licensed bed count input with color guide
+- [x] Notification delivery: 4 toggles (email, admin push, SMS, angel push)
+- [x] Rounding schedule: day-of-week selector (M–S)
+- [x] Check-in notification times: add/remove time chips
+- [x] Angel round reminders: toggle + phone notification preview
+- [x] Billing section: plan name, cost, renewal, manage/cancel
+
+### Deliverables
+
+- [x] All 7 tabs updated with pill/filter UX patterns
+- [x] Issues tab fully functional with mock data and resolution modal
+- [x] Settings panel opens/closes from gear icon
+- [x] Visual parity with reference HTML: pills, clickable KPIs, row lists, absent bar, census widget
+
+### Success Criteria
+
+- [x] All 8 screens navigable with consistent UX language
+- [x] Issues tab shows open count badge on nav
+- [x] Settings panel renders all sections correctly
+- [x] `npm run build` — zero TypeScript errors
+
+---
+
 ## Phase 3 — Frontend Development
 
 **Goal:** Build the full production frontend against the approved mockups. Components wired to Zustand stores with mock/static data — no real API calls yet.
