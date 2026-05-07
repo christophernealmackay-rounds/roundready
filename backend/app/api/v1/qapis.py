@@ -3,7 +3,10 @@ from fastapi import APIRouter, Depends, HTTPException
 import httpx
 
 from app.db.client import get_db, DB
-from app.schemas.qapi import QapiOut, QapiCreate, QapiUpdate, QapiItemOut, QapiItemCreate, QapiItemUpdate
+from app.schemas.qapi import (
+    QapiOut, QapiCreate, QapiUpdate,
+    QapiItemOut, QapiItemCreate, QapiItemUpdate,
+)
 
 router = APIRouter(prefix="/qapis", tags=["qapis"])
 
@@ -11,6 +14,15 @@ router = APIRouter(prefix="/qapis", tags=["qapis"])
 async def _with_items(qapi: dict, db: DB) -> dict:
     items = await db.select("qapi_items", {"qapi_id": f"eq.{qapi['id']}", "order": "order.asc"})
     return {**qapi, "items": items}
+
+
+def _serialize_item(data: dict) -> dict:
+    """Convert date/UUID fields to JSON-serializable strings for PostgREST."""
+    out = dict(data)
+    for k in ("start_date", "expected_completion"):
+        if out.get(k):
+            out[k] = out[k].isoformat() if hasattr(out[k], "isoformat") else out[k]
+    return out
 
 
 @router.get("", response_model=list[QapiOut])
@@ -53,40 +65,44 @@ async def delete_qapi(qapi_id: uuid.UUID, client: httpx.AsyncClient = Depends(ge
     rows = await db.select("qapis", {"id": f"eq.{qapi_id}"})
     if not rows:
         raise HTTPException(404, "QAPI not found")
-    await db.delete("qapi_items", {"qapi_id": str(qapi_id)})
-    await db.delete("qapis", {"id": str(qapi_id)})
+    await db.delete("qapis", {"id": str(qapi_id)})  # qapi_items cascade
 
 
 @router.post("/{qapi_id}/items", response_model=QapiItemOut, status_code=201)
-async def create_item(qapi_id: uuid.UUID, body: QapiItemCreate, client: httpx.AsyncClient = Depends(get_db)):
+async def create_item(
+    qapi_id: uuid.UUID,
+    body: QapiItemCreate,
+    client: httpx.AsyncClient = Depends(get_db),
+):
     db = DB(client)
     rows = await db.select("qapis", {"id": f"eq.{qapi_id}"})
     if not rows:
         raise HTTPException(404, "QAPI not found")
-    data = {"id": str(uuid.uuid4()), "qapi_id": str(qapi_id), **body.model_dump()}
-    if data.get("start_date"):
-        data["start_date"] = data["start_date"].isoformat()
-    if data.get("expected_completion_date"):
-        data["expected_completion_date"] = data["expected_completion_date"].isoformat()
+    data = _serialize_item({"id": str(uuid.uuid4()), "qapi_id": str(qapi_id), **body.model_dump()})
     return await db.insert("qapi_items", data)
 
 
 @router.patch("/{qapi_id}/items/{item_id}", response_model=QapiItemOut)
-async def update_item(qapi_id: uuid.UUID, item_id: uuid.UUID, body: QapiItemUpdate, client: httpx.AsyncClient = Depends(get_db)):
+async def update_item(
+    qapi_id: uuid.UUID,
+    item_id: uuid.UUID,
+    body: QapiItemUpdate,
+    client: httpx.AsyncClient = Depends(get_db),
+):
     db = DB(client)
     rows = await db.select("qapi_items", {"id": f"eq.{item_id}", "qapi_id": f"eq.{qapi_id}"})
     if not rows:
         raise HTTPException(404, "Item not found")
-    data = {k: v for k, v in body.model_dump().items() if v is not None}
-    if data.get("start_date"):
-        data["start_date"] = data["start_date"].isoformat()
-    if data.get("expected_completion_date"):
-        data["expected_completion_date"] = data["expected_completion_date"].isoformat()
+    data = _serialize_item({k: v for k, v in body.model_dump().items() if v is not None})
     return await db.update("qapi_items", {"id": str(item_id)}, data) if data else rows[0]
 
 
 @router.delete("/{qapi_id}/items/{item_id}", status_code=204)
-async def delete_item(qapi_id: uuid.UUID, item_id: uuid.UUID, client: httpx.AsyncClient = Depends(get_db)):
+async def delete_item(
+    qapi_id: uuid.UUID,
+    item_id: uuid.UUID,
+    client: httpx.AsyncClient = Depends(get_db),
+):
     db = DB(client)
     rows = await db.select("qapi_items", {"id": f"eq.{item_id}", "qapi_id": f"eq.{qapi_id}"})
     if not rows:

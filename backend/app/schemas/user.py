@@ -1,33 +1,35 @@
-from pydantic import BaseModel
+from __future__ import annotations
+
+from typing import Any
 from uuid import UUID
+
+from pydantic import BaseModel
 
 
 class UserOut(BaseModel):
     id: UUID
-    facility_id: UUID | None
-    full_name: str
-    email: str | None
-    department: str | None
-    is_angel: bool
-    is_admin: bool
+    name: str
+    email: str
+    role: str  # admin | angel | charge_nurse | viewer
+    department_id: UUID | None = None
+    notification_prefs: dict[str, Any] = {}
     active: bool
 
     model_config = {"from_attributes": True}
 
 
 class UserCreate(BaseModel):
-    full_name: str
-    email: str | None = None
-    department: str | None = None
-    is_angel: bool = False
-    is_admin: bool = False
-    facility_id: UUID | None = None
+    name: str
+    email: str
+    role: str
+    department_id: UUID | None = None
+    notification_prefs: dict[str, Any] = {}
 
 
 class UserUpdate(BaseModel):
-    full_name: str | None = None
+    name: str | None = None
     email: str | None = None
-    department: str | None = None
-    is_angel: bool | None = None
-    is_admin: bool | None = None
+    role: str | None = None
+    department_id: UUID | None = None
+    notification_prefs: dict[str, Any] | None = None
     active: bool | None = None

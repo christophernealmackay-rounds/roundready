@@ -1,18 +1,19 @@
-from pydantic import BaseModel
+from __future__ import annotations
+
 from uuid import UUID
+
+from pydantic import BaseModel
 
 
 class AngelOut(BaseModel):
     id: UUID
     user_id: UUID
-    full_name: str
-    email: str | None
-    department: str | None
-    department_id: UUID | None
+    name: str
+    department_id: UUID | None = None
+    department: str | None = None
     absent: bool
-    absent_since: str | None
+    absent_since: str | None = None
     resident_count: int = 0
-    rounds_today: int = 0
 
     model_config = {"from_attributes": True}
 

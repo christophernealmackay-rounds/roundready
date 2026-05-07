@@ -1,4 +1,8 @@
+"""Aggregated reports against the new schema."""
+from __future__ import annotations
+
 from typing import Optional
+from collections import defaultdict
 from fastapi import APIRouter, Depends
 import httpx
 
@@ -12,90 +16,105 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 async def get_report(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
-    angel_name: Optional[str] = None,
+    angel_id: Optional[str] = None,
+    resident_id: Optional[str] = None,
+    qapi_id: Optional[str] = None,
+    qapi_item_id: Optional[str] = None,
     client: httpx.AsyncClient = Depends(get_db),
 ):
     db = DB(client)
 
-    # Build round filter
-    round_params: dict = {"order": "submitted_at.asc", "limit": "5000"}
+    # Rounds in range
+    round_params: dict = {"order": "completed_at.asc", "limit": "10000"}
     if date_from and date_to:
-        round_params["and"] = f"(submitted_at.gte.{date_from}T00:00:00Z,submitted_at.lte.{date_to}T23:59:59Z)"
+        round_params["and"] = (
+            f"(completed_at.gte.{date_from}T00:00:00Z,"
+            f"completed_at.lte.{date_to}T23:59:59Z)"
+        )
     elif date_from:
-        round_params["submitted_at"] = f"gte.{date_from}T00:00:00Z"
+        round_params["completed_at"] = f"gte.{date_from}T00:00:00Z"
     elif date_to:
-        round_params["submitted_at"] = f"lte.{date_to}T23:59:59Z"
-    if angel_name:
-        round_params["angel_name"] = f"eq.{angel_name}"
+        round_params["completed_at"] = f"lte.{date_to}T23:59:59Z"
+    if angel_id:
+        round_params["angel_id"] = f"eq.{angel_id}"
+    if resident_id:
+        round_params["resident_id"] = f"eq.{resident_id}"
 
     rounds = await db.select("rounds", round_params)
 
-    total = len(rounds)
-    completed = sum(1 for r in rounds if r.get("status") == "completed")
-    completion_rate = round(completed / total * 100, 1) if total else 0.0
-    total_flags = sum(r.get("flags_raised", 0) for r in rounds)
+    # If filtering by QAPI / QAPI item, narrow rounds to those whose template has a section
+    # tied to that QAPI/item. Cheap enough for the demo data volume.
+    if qapi_id or qapi_item_id:
+        section_filter: dict = {}
+        if qapi_id:
+            section_filter["qapi_id"] = f"eq.{qapi_id}"
+        if qapi_item_id:
+            section_filter["qapi_item_id"] = f"eq.{qapi_item_id}"
+        sections = await db.select("template_sections", section_filter)
+        template_ids = {s["template_id"] for s in sections}
+        rounds = [r for r in rounds if r["template_id"] in template_ids]
 
-    # Issues
+    # Flag counts via round_answers
+    total_flags = 0
+    flag_by_angel: dict[str, int] = defaultdict(int)
+    flag_by_round: dict[str, int] = defaultdict(int)
+    for r in rounds:
+        flags = await db.select("round_answers", {
+            "round_id": f"eq.{r['id']}",
+            "issue_flagged": "eq.true",
+        })
+        n = len(flags)
+        total_flags += n
+        flag_by_angel[r["angel_id"]] += n
+        flag_by_round[r["id"]] = n
+
+    # Issues in range
     issue_params: dict = {}
     if date_from and date_to:
-        issue_params["and"] = f"(raised_at.gte.{date_from}T00:00:00Z,raised_at.lte.{date_to}T23:59:59Z)"
-    elif date_from:
-        issue_params["raised_at"] = f"gte.{date_from}T00:00:00Z"
-    elif date_to:
-        issue_params["raised_at"] = f"lte.{date_to}T23:59:59Z"
-
-    issues = await db.select("issues", issue_params)
-    open_issues = sum(1 for i in issues if not i.get("resolved"))
-    resolved_issues = sum(1 for i in issues if i.get("resolved"))
-
-    # Angel stats
-    angel_map: dict[str, dict] = {}
-    for r in rounds:
-        name = r.get("angel_name", "Unknown")
-        if name not in angel_map:
-            angel_map[name] = {"round_count": 0, "completed": 0, "flags": 0}
-        angel_map[name]["round_count"] += 1
-        if r.get("status") == "completed":
-            angel_map[name]["completed"] += 1
-        angel_map[name]["flags"] += r.get("flags_raised", 0)
-
-    angel_stats = [
-        AngelStat(
-            angel_name=name,
-            round_count=v["round_count"],
-            completion_rate=round(v["completed"] / v["round_count"] * 100, 1) if v["round_count"] else 0.0,
-            flags_raised=v["flags"],
+        issue_params["and"] = (
+            f"(created_at.gte.{date_from}T00:00:00Z,"
+            f"created_at.lte.{date_to}T23:59:59Z)"
         )
-        for name, v in sorted(angel_map.items())
-    ]
+    elif date_from:
+        issue_params["created_at"] = f"gte.{date_from}T00:00:00Z"
+    elif date_to:
+        issue_params["created_at"] = f"lte.{date_to}T23:59:59Z"
+    issues = await db.select("issues", issue_params)
+    open_issues = sum(1 for i in issues if i.get("status") == "open")
+    resolved_issues = sum(1 for i in issues if i.get("status") == "resolved")
+
+    # Angel stats: count rounds per angel, look up name once
+    rounds_by_angel: dict[str, int] = defaultdict(int)
+    for r in rounds:
+        rounds_by_angel[r["angel_id"]] += 1
+
+    angel_stats: list[AngelStat] = []
+    for aid, count in rounds_by_angel.items():
+        arows = await db.select("angels", {"id": f"eq.{aid}"})
+        name = ""
+        if arows:
+            urows = await db.select("users", {"id": f"eq.{arows[0]['user_id']}"})
+            if urows:
+                name = urows[0]["name"]
+        angel_stats.append(AngelStat(
+            angel_id=aid,
+            angel_name=name,
+            round_count=count,
+            flags_raised=flag_by_angel.get(aid, 0),
+        ))
+    angel_stats.sort(key=lambda s: s.angel_name)
 
     # Daily stats
-    daily_map: dict[str, dict] = {}
+    daily: dict[str, int] = defaultdict(int)
     for r in rounds:
-        submitted = r.get("submitted_at") or r.get("created_at", "")
-        if not submitted:
+        c = r.get("completed_at")
+        if not c:
             continue
-        day = submitted[:10]
-        if day not in daily_map:
-            daily_map[day] = {"total": 0, "completed": 0}
-        daily_map[day]["total"] += 1
-        if r.get("status") == "completed":
-            daily_map[day]["completed"] += 1
-
-    daily_stats = [
-        DailyStat(
-            date=day,
-            completed=v["completed"],
-            total=v["total"],
-            rate=round(v["completed"] / v["total"] * 100, 1) if v["total"] else 0.0,
-        )
-        for day, v in sorted(daily_map.items())
-    ]
+        daily[c[:10]] += 1
+    daily_stats = [DailyStat(date=d, rounds=n) for d, n in sorted(daily.items())]
 
     return ReportOut(
-        total_rounds=total,
-        completed_rounds=completed,
-        completion_rate=completion_rate,
+        total_rounds=len(rounds),
         total_flags=total_flags,
         open_issues=open_issues,
         resolved_issues=resolved_issues,
