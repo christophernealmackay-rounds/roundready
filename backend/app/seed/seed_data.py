@@ -153,11 +153,11 @@ QAPIS_ARCHIVED = [
 # Question repository — the pool the user drags from. ~25 questions.
 # Each question carries the dept that gets notified when it flags an issue.
 QUESTIONS = [
-    # Skin / Pressure (Skin Integrity QAPI)
-    {"text": "Skin intact, no new redness or breakdown observed?",                   "section": "Skin",       "issue_on": "no",  "department": "Nursing"},
-    {"text": "Resident repositioned per care plan in last 2 hours?",                 "section": "Skin",       "issue_on": "no",  "department": "Nursing"},
-    {"text": "Wearing non-slip footwear or non-skid socks?",                         "section": "Skin",       "issue_on": "no",  "department": "Therapy"},
-    {"text": "Heels offloaded with pillow or boot if at-risk?",                      "section": "Skin",       "issue_on": "no",  "department": "Nursing"},
+    # Skin / Pressure (Skin Integrity QAPI) — each question scoped to a single QAPI item
+    {"text": "Skin intact, no new redness or breakdown observed?",                   "section": "Skin Inspection", "issue_on": "no",  "department": "Nursing"},
+    {"text": "Heels offloaded with pillow or boot if at-risk?",                      "section": "Skin Inspection", "issue_on": "no",  "department": "Nursing"},
+    {"text": "Resident repositioned per care plan in last 2 hours?",                 "section": "Repositioning",   "issue_on": "no",  "department": "Nursing"},
+    {"text": "Wearing non-slip footwear or non-skid socks?",                         "section": "Footwear",        "issue_on": "no",  "department": "Therapy"},
     # Falls
     {"text": "Call light within reach?",                                             "section": "Falls",      "issue_on": "no",  "department": "Nursing"},
     {"text": "Bed in lowest position?",                                              "section": "Falls",      "issue_on": "no",  "department": "Nursing"},
@@ -437,11 +437,12 @@ async def run_seed(conn: asyncpg.Connection) -> dict:
     )
 
     # Section per active QAPI item, populated with relevant questions.
-    # Item 0 -> Skin section; Item 1 -> Skin + Hygiene; Item 2 -> Falls.
+    # Each pool maps to exactly one QAPI item so no question is duplicated
+    # across sections.
     section_question_map = [
-        ["Skin", "Hygiene"],          # Daily Skin Inspection
-        ["Skin"],                     # Repositioning
-        ["Falls"],                    # Non-Slip Footwear
+        ["Skin Inspection", "Hygiene"],   # Item 0: Daily Skin Inspection
+        ["Repositioning"],                # Item 1: Repositioning
+        ["Footwear", "Falls"],            # Item 2: Non-Slip Footwear (+ Falls overlap)
     ]
     template_question_ids: list[str] = []
     section_records: list[tuple] = []

@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import {
   Archive,
   GripVertical,
+  Pencil,
   Play,
   Plus,
   Square,
@@ -55,6 +56,9 @@ export default function RoundsPage() {
 
   // Mobile-frame angel UI state — opened by the "Run round" button.
   const [runOpen, setRunOpen] = useState(false);
+
+  // Edit-question modal — null when closed.
+  const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
 
   // Drag state
   const [dragOverSection, setDragOverSection] = useState<string | null>(null);
@@ -246,7 +250,9 @@ export default function RoundsPage() {
                                 Drop a question here from the repository below
                               </div>
                             ) : (
-                              sec.questions.map((q, qi) => (
+                              sec.questions.map((q, qi) => {
+                                const repoQ = questions.find((x) => x.id === q.questionId);
+                                return (
                                 <div
                                   key={q.id ?? q.questionId}
                                   style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderTop: qi > 0 ? "1px solid var(--hair-soft)" : undefined, fontSize: 12 }}
@@ -260,6 +266,14 @@ export default function RoundsPage() {
                                     → {departments.find((d) => d.id === q.notifyDepartmentId)?.name ?? "—"}
                                   </span>
                                   <button
+                                    onClick={() => repoQ && setEditingQuestion(repoQ)}
+                                    disabled={!repoQ}
+                                    style={{ background: "none", border: "none", cursor: repoQ ? "pointer" : "not-allowed", color: "var(--muted)", padding: 2 }}
+                                    title="Edit question"
+                                  >
+                                    <Pencil size={11} />
+                                  </button>
+                                  <button
                                     onClick={() => q.id && removeQuestion(activeAngelTemplate.id, sec.id, q.id)}
                                     disabled={!q.id}
                                     style={{ background: "none", border: "none", cursor: q.id ? "pointer" : "not-allowed", color: "var(--muted)", padding: 2 }}
@@ -268,7 +282,8 @@ export default function RoundsPage() {
                                     <X size={11} />
                                   </button>
                                 </div>
-                              ))
+                                );
+                              })
                             )}
                           </div>
                         );
@@ -283,6 +298,7 @@ export default function RoundsPage() {
                 questions={questions}
                 onDragStart={handleDragStart}
                 departments={departments}
+                onEdit={setEditingQuestion}
               />
             </>
           ) : (
@@ -342,10 +358,20 @@ export default function RoundsPage() {
                     {sec.questions.length === 0 ? (
                       <div style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>Drop a question here</div>
                     ) : (
-                      sec.questions.map((q) => (
+                      sec.questions.map((q) => {
+                        const repoQ = questions.find((x) => x.id === q.questionId);
+                        return (
                         <div key={q.id ?? q.questionId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 12 }}>
                           <GripVertical size={12} style={{ color: "var(--hair-strong)" }} />
                           <span style={{ flex: 1, color: "var(--ink-soft)" }}>{q.text}</span>
+                          <button
+                            onClick={() => repoQ && setEditingQuestion(repoQ)}
+                            disabled={!repoQ}
+                            style={{ background: "none", border: "none", cursor: repoQ ? "pointer" : "not-allowed", color: "var(--muted)", padding: 2 }}
+                            title="Edit question"
+                          >
+                            <Pencil size={10} />
+                          </button>
                           <button
                             onClick={() => q.id && removeQuestion(activeRapidTemplate.id, sec.id, q.id)}
                             style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 2 }}
@@ -353,7 +379,8 @@ export default function RoundsPage() {
                             <X size={10} />
                           </button>
                         </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 ))}
@@ -383,6 +410,7 @@ export default function RoundsPage() {
             questions={questions}
             onDragStart={handleDragStart}
             departments={departments}
+            onEdit={setEditingQuestion}
           />
         </>
       )}
@@ -500,6 +528,19 @@ export default function RoundsPage() {
         </Modal>
       )}
 
+      {/* Edit question modal */}
+      {editingQuestion && (
+        <EditQuestionModal
+          question={editingQuestion}
+          departments={departments}
+          onClose={() => setEditingQuestion(null)}
+          onSave={async (patch) => {
+            await useRoundsStore.getState().updateRepositoryQuestion(editingQuestion.id, patch);
+            setEditingQuestion(null);
+          }}
+        />
+      )}
+
       {/* Angel-side mobile rounding flow — shown to DON in a phone bezel */}
       {runOpen && activeAngelTemplate && (
         <div
@@ -536,10 +577,12 @@ function RepositoryPanel({
   questions,
   onDragStart,
   departments,
+  onEdit,
 }: {
   questions: Question[];
   onDragStart: (e: React.DragEvent, questionId: string) => void;
   departments: { id: string; name: string }[];
+  onEdit: (q: Question) => void;
 }) {
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--hair)", borderRadius: 14, boxShadow: "var(--shadow-sm)", overflow: "hidden" }}>
@@ -570,6 +613,15 @@ function RepositoryPanel({
             <span style={{ fontSize: 10, color: "var(--muted)", flexShrink: 0 }}>
               → {departments.find((d) => d.id === q.notifyDepartmentId)?.name ?? "—"}
             </span>
+            <button
+              onClick={(e) => { e.stopPropagation(); onEdit(q); }}
+              onMouseDown={(e) => e.stopPropagation()}
+              draggable={false}
+              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 2, flexShrink: 0 }}
+              title="Edit question"
+            >
+              <Pencil size={11} />
+            </button>
           </div>
         ))}
       </div>
@@ -634,6 +686,93 @@ function Modal({
         {children}
       </div>
     </div>
+  );
+}
+
+function EditQuestionModal({
+  question,
+  departments,
+  onClose,
+  onSave,
+}: {
+  question: Question;
+  departments: { id: string; name: string }[];
+  onClose: () => void;
+  onSave: (patch: Partial<Omit<Question, "id">>) => Promise<void>;
+}) {
+  const [text, setText] = useState(question.text);
+  const [issueOn, setIssueOn] = useState<Question["issueOn"]>(question.issueOn);
+  const [notifyDepartmentId, setNotifyDepartmentId] = useState(question.notifyDepartmentId);
+  const [section, setSection] = useState(question.section);
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    if (!text.trim()) return;
+    setBusy(true);
+    try {
+      await onSave({ text: text.trim(), issueOn, notifyDepartmentId, section });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="Edit question" onClose={onClose} width={520}>
+      <div style={{ marginBottom: 12 }}>
+        <label style={inputLabelStyle}>Question text</label>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={3}
+          style={{ ...inputStyle, resize: "vertical" }}
+        />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+        <div>
+          <label style={inputLabelStyle}>Section</label>
+          <input
+            value={section}
+            onChange={(e) => setSection(e.target.value)}
+            placeholder="e.g. Skin Inspection"
+            style={inputStyle}
+          />
+        </div>
+        <div>
+          <label style={inputLabelStyle}>Flag an issue when answer is</label>
+          <select
+            value={issueOn}
+            onChange={(e) => setIssueOn(e.target.value as Question["issueOn"])}
+            style={inputStyle}
+          >
+            <option value="no">No</option>
+            <option value="yes">Yes</option>
+            <option value="either">Either</option>
+          </select>
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 18 }}>
+        <label style={inputLabelStyle}>Notify department on flag</label>
+        <select
+          value={notifyDepartmentId}
+          onChange={(e) => setNotifyDepartmentId(e.target.value)}
+          style={inputStyle}
+        >
+          <option value="">— None —</option>
+          {departments.map((d) => (
+            <option key={d.id} value={d.id}>{d.name}</option>
+          ))}
+        </select>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <button onClick={onClose} style={cancelBtnStyle}>Cancel</button>
+        <button onClick={save} disabled={!text.trim() || busy} style={primaryBtnStyle(!!text.trim() && !busy)}>
+          {busy ? "Saving…" : "Save changes"}
+        </button>
+      </div>
+    </Modal>
   );
 }
 

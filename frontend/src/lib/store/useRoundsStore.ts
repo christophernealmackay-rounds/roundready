@@ -19,6 +19,7 @@ import {
   listRounds,
   removeQuestionFromSection,
   submitRound,
+  updateQuestion,
   updateRoundTemplate,
 } from '../api';
 import { useIssuesStore } from './useIssuesStore';
@@ -54,6 +55,7 @@ interface RoundsState {
     templateQuestionId: string
   ) => Promise<void>;
   addRepositoryQuestion: (q: Omit<Question, 'id'>) => Promise<Question>;
+  updateRepositoryQuestion: (id: string, patch: Partial<Omit<Question, 'id'>>) => Promise<Question>;
   removeRepositoryQuestion: (id: string) => Promise<void>;
   completeRound: (
     round: Omit<CompletedRound, 'id'>
@@ -197,6 +199,19 @@ export const useRoundsStore = create<RoundsState>((set) => ({
     });
     set((s) => ({ questions: [...s.questions, created] }));
     return created;
+  },
+
+  updateRepositoryQuestion: async (id, patch) => {
+    const updated = await updateQuestion(id, patch);
+    // Refresh templates too — every section that links this question shows
+    // its text/issueOn/notifyDepartmentId inline, so the template needs a
+    // re-fetch to pick up the change.
+    const templates = await listRoundTemplates();
+    set((s) => ({
+      questions: s.questions.map((q) => (q.id === id ? updated : q)),
+      templates,
+    }));
+    return updated;
   },
 
   removeRepositoryQuestion: async (id) => {

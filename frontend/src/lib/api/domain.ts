@@ -353,6 +353,29 @@ export async function createQuestion(input: {
   return mapQuestion(unwrap(res));
 }
 
+export async function updateQuestion(
+  questionId: string,
+  input: Partial<{
+    text: string;
+    section: string;
+    issueOn: Question['issueOn'];
+    notifyDepartmentId: string | null;
+    inRepository: boolean;
+  }>
+): Promise<Question> {
+  const res = await api.PATCH('/api/v1/questions/{question_id}', {
+    params: { path: { question_id: questionId } },
+    body: {
+      text: input.text,
+      section: input.section,
+      issue_on: input.issueOn,
+      notify_department_id: input.notifyDepartmentId,
+      in_repository: input.inRepository,
+    },
+  });
+  return mapQuestion(unwrap(res));
+}
+
 export async function deleteQuestion(questionId: string): Promise<void> {
   const res = await api.DELETE('/api/v1/questions/{question_id}', {
     params: { path: { question_id: questionId } },

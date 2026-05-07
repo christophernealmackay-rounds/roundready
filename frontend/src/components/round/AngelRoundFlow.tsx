@@ -32,10 +32,22 @@ export default function AngelRoundFlow({ template, onClose }: Props) {
     [residents, angel]
   );
 
-  const allQuestions: TemplateQuestion[] = useMemo(
-    () => template.sections.flatMap((s) => s.questions),
-    [template]
-  );
+  // Flatten across sections, but dedup by questionId so the angel only
+  // answers each question once even when the same question is linked into
+  // multiple QAPI sections (a Skin question might be tied to both the
+  // "Skin Inspection" and "Repositioning" QAPI items, for example).
+  const allQuestions: TemplateQuestion[] = useMemo(() => {
+    const seen = new Set<string>();
+    const out: TemplateQuestion[] = [];
+    for (const s of template.sections) {
+      for (const q of s.questions) {
+        if (seen.has(q.questionId)) continue;
+        seen.add(q.questionId);
+        out.push(q);
+      }
+    }
+    return out;
+  }, [template]);
 
   const [step, setStep] = useState<Step>("pick-resident");
   const [residentId, setResidentId] = useState<string>("");
@@ -91,7 +103,7 @@ export default function AngelRoundFlow({ template, onClose }: Props) {
         <div style={{ padding: "12px 16px 4px", fontSize: 11, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
           {myResidents.length} resident{myResidents.length === 1 ? "" : "s"}
         </div>
-        <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", gap: 8, paddingBottom: 16 }}>
+        <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
           {myResidents.length === 0 ? (
             <div style={{ padding: "20px 0", textAlign: "center", fontSize: 12, color: "var(--muted)" }}>
               No residents assigned
