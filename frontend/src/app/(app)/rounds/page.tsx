@@ -11,10 +11,10 @@ import {
 } from "lucide-react";
 import { useRoundsStore } from "@/lib/store/useRoundsStore";
 import { useQapiStore } from "@/lib/store/useQapiStore";
-import { useAngelsStore } from "@/lib/store/useAngelsStore";
-import { useResidentsStore } from "@/lib/store/useResidentsStore";
 import { useUsersStore } from "@/lib/store/useUsersStore";
-import type { Question, RoundTemplate, TemplateSection } from "@/lib/types";
+import MobileFrame from "@/components/round/MobileFrame";
+import AngelRoundFlow from "@/components/round/AngelRoundFlow";
+import type { Question, TemplateSection } from "@/lib/types";
 
 type RoundsTab = "Angel Rounds" | "Rapid Round";
 
@@ -41,8 +41,6 @@ export default function RoundsPage() {
     removeQuestion,
   } = useRoundsStore();
   const qapis = useQapiStore((s) => s.qapis);
-  const angels = useAngelsStore((s) => s.angels);
-  const residents = useResidentsStore((s) => s.residents);
   const departments = useUsersStore((s) => s.departments);
 
   const [tab, setTab] = useState<RoundsTab>("Angel Rounds");
@@ -55,12 +53,8 @@ export default function RoundsPage() {
   const [rapidForm, setRapidForm] = useState({ name: "", startDate: "", endDate: "" });
   const [rapidOpen, setRapidOpen] = useState(false);
 
-  // Round simulator state (kept for now — Phase 8f.3 swaps in the mobile frame).
-  const [simOpen, setSimOpen] = useState(false);
-  const [simAngel, setSimAngel] = useState("");
-  const [simResident, setSimResident] = useState("");
-  const [simAnswers, setSimAnswers] = useState<Record<string, boolean>>({});
-  const [simSuccess, setSimSuccess] = useState(false);
+  // Mobile-frame angel UI state — opened by the "Run round" button.
+  const [runOpen, setRunOpen] = useState(false);
 
   // Drag state
   const [dragOverSection, setDragOverSection] = useState<string | null>(null);
@@ -68,9 +62,6 @@ export default function RoundsPage() {
   const activeAngelTemplate = templates.find((t) => t.active && t.type === "angel");
   const activeRapidTemplate = templates.find((t) => t.active && t.type === "rapid");
   const archivedTemplates = templates.filter((t) => t.archivedAt);
-
-  const activeAngels = angels.filter((a) => !a.absent);
-  const activeResidents = residents.filter((r) => r.status === "active");
 
   // Group sections by their QAPI for the new Angel Rounds layout.
   const groupedSections = useMemo(() => {
@@ -87,46 +78,10 @@ export default function RoundsPage() {
       return {
         qapiId,
         qapiTitle: q?.title ?? "Unlinked sections",
-        sections: [...sections].sort((a, b) => 0),
+        sections,
       };
     });
   }, [activeAngelTemplate, qapis]);
-
-  function initSimulator() {
-    if (!activeAngelTemplate) return;
-    const answers: Record<string, boolean> = {};
-    for (const sec of activeAngelTemplate.sections) {
-      for (const q of sec.questions) {
-        answers[q.questionId] = true;
-      }
-    }
-    setSimAnswers(answers);
-    setSimAngel(activeAngels[0]?.id ?? "");
-    const angelResidents = activeResidents.filter(
-      (r) => r.angelId === (activeAngels[0]?.id ?? "")
-    );
-    setSimResident(angelResidents[0]?.id ?? "");
-    setSimOpen(true);
-  }
-
-  async function submitRound() {
-    if (!activeAngelTemplate || !simAngel || !simResident) return;
-    const answers = Object.entries(simAnswers).map(([questionId, answer]) => ({
-      questionId,
-      answer,
-      issueFlagged: !answer,
-    }));
-    await useRoundsStore.getState().completeRound({
-      templateId: activeAngelTemplate.id,
-      angelId: simAngel,
-      residentId: simResident,
-      completedAt: new Date().toISOString(),
-      answers,
-    });
-    setSimOpen(false);
-    setSimSuccess(true);
-    setTimeout(() => setSimSuccess(false), 4000);
-  }
 
   function createRapid() {
     if (!rapidForm.name.trim()) return;
@@ -183,9 +138,9 @@ export default function RoundsPage() {
           </button>
           {tab === "Angel Rounds" && (
             <button
-              onClick={initSimulator}
+              onClick={() => setRunOpen(true)}
               disabled={!activeAngelTemplate}
-              title={!activeAngelTemplate ? "No active template — create one first" : "Run a round"}
+              title={!activeAngelTemplate ? "No active template — create one first" : "Open the angel-side rounding view"}
               style={{ display: "flex", alignItems: "center", gap: 6, background: activeAngelTemplate ? "var(--green)" : "var(--hair-strong)", color: activeAngelTemplate ? "#fff" : "var(--muted)", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 500, cursor: activeAngelTemplate ? "pointer" : "not-allowed" }}
             >
               <Play size={14} /> Run round
@@ -215,13 +170,6 @@ export default function RoundsPage() {
           </button>
         ))}
       </div>
-
-      {/* Round-submitted toast */}
-      {simSuccess && tab === "Angel Rounds" && (
-        <div style={{ background: "var(--green-tint)", border: "1px solid var(--green-edge)", borderRadius: 10, padding: "10px 16px", fontSize: 12, color: "var(--green)", fontWeight: 500 }}>
-          ✓ Round submitted. Dashboard and Issues have been updated.
-        </div>
-      )}
 
       {/* Angel Rounds */}
       {tab === "Angel Rounds" && (
@@ -552,62 +500,31 @@ export default function RoundsPage() {
         </Modal>
       )}
 
-      {/* Round simulator (Phase 8f.3 will swap in the mobile bezel UI) */}
-      {simOpen && activeAngelTemplate && (
-        <Modal title="Run round" onClose={() => setSimOpen(false)} width={580}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 18 }}>
-            <div>
-              <label style={inputLabelStyle}>Angel</label>
-              <select
-                value={simAngel}
-                onChange={(e) => {
-                  setSimAngel(e.target.value);
-                  const res = activeResidents.filter((r) => r.angelId === e.target.value);
-                  setSimResident(res[0]?.id ?? "");
-                }}
-                style={inputStyle}
+      {/* Angel-side mobile rounding flow — shown to DON in a phone bezel */}
+      {runOpen && activeAngelTemplate && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.55)", padding: 20 }}
+          onClick={(e) => { if (e.target === e.currentTarget) setRunOpen(false); }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+            <div style={{ color: "rgba(255,255,255,0.85)", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
+              Angel-side preview · {activeAngelTemplate.name}
+              <button
+                onClick={() => setRunOpen(false)}
+                style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", padding: "4px 10px", borderRadius: 6, fontSize: 11, cursor: "pointer" }}
               >
-                {activeAngels.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
+                Close
+              </button>
             </div>
-            <div>
-              <label style={inputLabelStyle}>Resident</label>
-              <select value={simResident} onChange={(e) => setSimResident(e.target.value)} style={inputStyle}>
-                {activeResidents.filter((r) => r.angelId === simAngel).map((r) => (
-                  <option key={r.id} value={r.id}>{r.name} (Rm {r.room}{r.bed})</option>
-                ))}
-              </select>
-            </div>
+            <MobileFrame>
+              <AngelRoundFlow
+                template={activeAngelTemplate}
+                onClose={() => setRunOpen(false)}
+              />
+            </MobileFrame>
           </div>
-
-          {activeAngelTemplate.sections.map((sec) => (
-            <div key={sec.id} style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>
-                {sec.title}
-              </div>
-              {sec.questions.map((q) => (
-                <div key={q.questionId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "7px 0", borderBottom: "1px solid var(--hair-soft)" }}>
-                  <span style={{ fontSize: 12, color: "var(--ink-soft)", flex: 1 }}>{q.text}</span>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button
-                      onClick={() => setSimAnswers((a) => ({ ...a, [q.questionId]: true }))}
-                      style={pillBtn(simAnswers[q.questionId] === true, "var(--green)", "var(--green-tint)")}
-                    >Yes</button>
-                    <button
-                      onClick={() => setSimAnswers((a) => ({ ...a, [q.questionId]: false }))}
-                      style={pillBtn(simAnswers[q.questionId] === false, "var(--red)", "var(--red-tint)")}
-                    >No</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))}
-
-          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-            <button onClick={() => setSimOpen(false)} style={cancelBtnStyle}>Cancel</button>
-            <button onClick={submitRound} style={primaryBtnStyle(true)}>Submit round</button>
-          </div>
-        </Modal>
+        </div>
       )}
     </div>
   );
@@ -766,15 +683,3 @@ function primaryBtnStyle(enabled: boolean): React.CSSProperties {
   };
 }
 
-function pillBtn(active: boolean, base: string, tint: string): React.CSSProperties {
-  return {
-    fontSize: 11,
-    fontWeight: 600,
-    padding: "4px 12px",
-    borderRadius: 6,
-    border: `1px solid ${active ? base : "var(--hair-strong)"}`,
-    background: active ? tint : "var(--surface-alt)",
-    color: active ? base : "var(--muted)",
-    cursor: "pointer",
-  };
-}
