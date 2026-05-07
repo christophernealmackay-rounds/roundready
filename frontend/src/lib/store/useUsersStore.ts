@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { User, Department } from '../types';
+import type { Department, NotificationPrefs, User } from '../types';
 import {
   createDepartment,
   createUser,
@@ -17,6 +17,7 @@ interface UsersState {
   addUser: (u: Omit<User, 'id'>) => Promise<User>;
   updateUser: (u: User) => Promise<User>;
   deactivateUser: (id: string) => Promise<User>;
+  setNotificationPrefs: (id: string, prefs: NotificationPrefs) => Promise<User>;
   addDepartment: (name: string) => Promise<Department>;
   removeDepartment: (id: string) => Promise<void>;
 }
@@ -53,6 +54,7 @@ export const useUsersStore = create<UsersState>((set) => ({
       role: u.role,
       departmentId: u.departmentId,
       active: u.active,
+      notificationPrefs: u.notificationPrefs,
     });
     set((s) => ({ users: s.users.map((x) => (x.id === u.id ? updated : x)) }));
     return updated;
@@ -60,6 +62,12 @@ export const useUsersStore = create<UsersState>((set) => ({
 
   deactivateUser: async (id) => {
     const updated = await apiUpdateUser(id, { active: false });
+    set((s) => ({ users: s.users.map((x) => (x.id === id ? updated : x)) }));
+    return updated;
+  },
+
+  setNotificationPrefs: async (id, prefs) => {
+    const updated = await apiUpdateUser(id, { notificationPrefs: prefs });
     set((s) => ({ users: s.users.map((x) => (x.id === id ? updated : x)) }));
     return updated;
   },

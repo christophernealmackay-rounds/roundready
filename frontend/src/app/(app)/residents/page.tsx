@@ -3,6 +3,9 @@ import { useState } from "react";
 import { Search, RefreshCw } from "lucide-react";
 import { useResidentsStore } from "@/lib/store/useResidentsStore";
 import { useAngelsStore } from "@/lib/store/useAngelsStore";
+import { useResidentGroupsStore } from "@/lib/store/useResidentGroupsStore";
+import GroupPills from "@/components/groups/GroupPills";
+import GroupManager from "@/components/groups/GroupManager";
 import type { Resident } from "@/lib/types";
 
 type ResFilter = "all" | "assigned" | "unassigned";
@@ -13,10 +16,13 @@ export default function ResidentsPage() {
   const residents = useResidentsStore((s) => s.residents);
   const { assignToAngel, unassignResident, autoAssign } = useResidentsStore();
   const angels = useAngelsStore((s) => s.angels);
+  const groups = useResidentGroupsStore((s) => s.groups);
 
   const [search, setSearch] = useState("");
   const [resFilter, setResFilter] = useState<ResFilter>("all");
   const [angelFilter, setAngelFilter] = useState<string | null>(null);
+  const [groupFilter, setGroupFilter] = useState<string | null>(null);
+  const [groupManagerOpen, setGroupManagerOpen] = useState(false);
   const [assignModal, setAssignModal] = useState<Resident | null>(null);
   const [selectedAngel, setSelectedAngel] = useState("");
   const [pccConnected] = useState(false);
@@ -30,6 +36,11 @@ export default function ResidentsPage() {
   if (resFilter === "assigned")   displayed = assigned;
   if (resFilter === "unassigned") displayed = unassigned;
   if (angelFilter) displayed = displayed.filter((r) => r.angelId === angelFilter);
+  if (groupFilter) {
+    const g = groups.find((x) => x.id === groupFilter);
+    const memberSet = new Set(g?.memberIds ?? []);
+    displayed = displayed.filter((r) => memberSet.has(r.id));
+  }
   if (search) displayed = displayed.filter((r) =>
     r.name.toLowerCase().includes(search.toLowerCase()) || r.room.includes(search)
   );
@@ -96,6 +107,13 @@ export default function ResidentsPage() {
         </div>
       </div>
 
+      {/* Group pills (wings + custom carts) */}
+      <GroupPills
+        selectedId={groupFilter}
+        onChange={setGroupFilter}
+        onCreateClick={() => setGroupManagerOpen(true)}
+      />
+
       {/* Search + angel filter pills */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <div style={{ position: "relative", flex: "0 0 220px" }}>
@@ -111,6 +129,8 @@ export default function ResidentsPage() {
           </button>
         ))}
       </div>
+
+      <GroupManager open={groupManagerOpen} onClose={() => setGroupManagerOpen(false)} />
 
       {/* Resident list */}
       <div style={{ background: "var(--surface)", border: "1px solid var(--hair)", borderRadius: 12, boxShadow: "var(--shadow-sm)", overflow: "hidden" }}>

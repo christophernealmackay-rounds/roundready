@@ -3,7 +3,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { X } from "lucide-react";
-import { useIssuesStore } from "@/lib/store";
+import { useIssuesStore, useRoundsStore, useUsersStore } from "@/lib/store";
+import { initials, useCurrentUser } from "@/lib/auth/currentUser";
+import type { NotificationPrefs } from "@/lib/types";
 
 const NAV = [
   { label: "Dashboard", href: "/dashboard" },
@@ -21,6 +23,15 @@ const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 export default function Topbar() {
   const pathname = usePathname();
   const openCount = useIssuesStore((s) => s.issues.filter((i) => i.status === "open").length);
+  const currentUser = useCurrentUser();
+  const setNotificationPrefs = useUsersStore((s) => s.setNotificationPrefs);
+  const departments = useUsersStore((s) => s.departments);
+  const questions = useRoundsStore((s) => s.questions);
+  const userPrefs: NotificationPrefs = currentUser?.notificationPrefs ?? {};
+  function togglePref(key: keyof NotificationPrefs) {
+    if (!currentUser) return;
+    setNotificationPrefs(currentUser.id, { ...userPrefs, [key]: !userPrefs[key] });
+  }
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeDays, setActiveDays] = useState([0, 1, 2, 3, 4]);
@@ -66,8 +77,8 @@ export default function Topbar() {
               <circle cx="8" cy="8" r="2" stroke="rgba(255,255,255,0.8)" strokeWidth="1.3"/>
             </svg>
           </button>
-          <div className="flex items-center justify-center w-8 h-8 rounded-full select-none" style={{ background: "var(--avatar-gradient)", fontSize: 10.5, fontWeight: 600, letterSpacing: "0.02em", color: "#fff", boxShadow: "0 0 0 2px rgba(255,255,255,0.15)" }}>
-            CM
+          <div className="flex items-center justify-center w-8 h-8 rounded-full select-none" style={{ background: "var(--avatar-gradient)", fontSize: 10.5, fontWeight: 600, letterSpacing: "0.02em", color: "#fff", boxShadow: "0 0 0 2px rgba(255,255,255,0.15)" }} title={currentUser?.name ?? ""}>
+            {currentUser ? initials(currentUser.name) : ""}
           </div>
         </div>
 
@@ -108,6 +119,66 @@ export default function Topbar() {
             </div>
 
             <div style={{ padding: "20px 24px", flex: 1 }}>
+              {/* My notifications — per-user prefs (persisted via PATCH /users/{id}) */}
+              {currentUser && (
+                <>
+                  <p style={{ fontSize: 10, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 10px" }}>My Notifications — {currentUser.name}</p>
+                  <div style={{ background: "var(--surface)", border: "1px solid var(--hair)", borderRadius: 12, padding: "4px 16px", marginBottom: 20, boxShadow: "var(--shadow-sm)" }}>
+                    {([
+                      { key: "issues" as const,    label: "Flagged issues",          sub: "Notify me whenever a round flags a concern" },
+                      { key: "reminders" as const, label: "Round reminders",         sub: "Push notifications before each rounding window" },
+                      { key: "summaries" as const, label: "Daily completion summary", sub: "End-of-day rollup of completion rate" },
+                    ]).map((n, i, arr) => {
+                      const on = !!userPrefs[n.key];
+                      return (
+                        <div key={n.key} style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "11px 0", borderBottom: i < arr.length - 1 ? "1px solid var(--hair-soft)" : undefined, gap: 12 }}>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>{n.label}</div>
+                            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{n.sub}</div>
+                          </div>
+                          <div onClick={() => togglePref(n.key)} style={{ width: 38, height: 21, borderRadius: 11, background: on ? "var(--blue)" : "var(--hair-strong)", cursor: "pointer", position: "relative", flexShrink: 0, transition: "background 0.2s" }}>
+                            <div style={{ position: "absolute", top: 3, left: on ? 20 : 3, width: 15, height: 15, borderRadius: "50%", background: "#fff", transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,.2)" }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Global department routing — read-only display (driven by question.notify_department_id) */}
+                  <p style={{ fontSize: 10, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 10px" }}>Department Routing</p>
+                  <div style={{ background: "var(--surface)", border: "1px solid var(--hair)", borderRadius: 12, padding: "14px 16px", marginBottom: 20, boxShadow: "var(--shadow-sm)" }}>
+                    <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10 }}>
+                      Issues flagged by an angel route to the department configured on the rounding question. Configure routing on each question in the <Link href="/rounds" style={{ color: "var(--blue)", textDecoration: "none" }}>Rounds tab</Link>.
+                    </p>
+                    {(() => {
+                      const counts = new Map<string, number>();
+                      for (const q of questions) {
+                        if (q.notifyDepartmentId) counts.set(q.notifyDepartmentId, (counts.get(q.notifyDepartmentId) ?? 0) + 1);
+                      }
+                      const rows = departments
+                        .map((d) => ({ ...d, n: counts.get(d.id) ?? 0 }))
+                        .filter((d) => d.n > 0)
+                        .sort((a, b) => b.n - a.n);
+                      if (rows.length === 0) {
+                        return <div style={{ fontSize: 12, color: "var(--muted)", padding: "8px 0" }}>No questions have routing configured yet.</div>;
+                      }
+                      return (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          {rows.map((d) => (
+                            <div key={d.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--hair-soft)", fontSize: 12 }}>
+                              <span style={{ color: "var(--ink)" }}>{d.name}</span>
+                              <span style={{ fontFamily: "var(--font-mono)", color: "var(--muted)", fontSize: 11 }}>
+                                {d.n} {d.n === 1 ? "question" : "questions"}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </>
+              )}
+
               <button style={{ width: "100%", padding: 10, borderRadius: 8, border: "none", background: "var(--blue)", color: "#fff", fontSize: 13, fontWeight: 500, cursor: "pointer", marginBottom: 20 }}>
                 Save all settings
               </button>

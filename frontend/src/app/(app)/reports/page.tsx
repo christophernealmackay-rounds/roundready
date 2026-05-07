@@ -1,11 +1,14 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { Download, ChevronDown, Search, FileText } from "lucide-react";
 import { useRoundsStore } from "@/lib/store/useRoundsStore";
 import { useIssuesStore } from "@/lib/store/useIssuesStore";
 import { useQapiStore } from "@/lib/store/useQapiStore";
 import { useResidentsStore } from "@/lib/store/useResidentsStore";
+import { useResidentGroupsStore } from "@/lib/store/useResidentGroupsStore";
+import GroupPills from "@/components/groups/GroupPills";
 
 type DateRange = "month" | "30" | "7" | "yesterday" | "custom";
 
@@ -39,9 +42,22 @@ export default function ReportsPage() {
   const issues = useIssuesStore((s) => s.issues);
   const qapis = useQapiStore((s) => s.qapis);
   const residents = useResidentsStore((s) => s.residents);
+  const groups = useResidentGroupsStore((s) => s.groups);
+
+  const searchParams = useSearchParams();
+  const qapiIdFromUrl = searchParams.get("qapi");
 
   const [dateRange, setDateRange] = useState<DateRange>("month");
   const [selectedQapi, setSelectedQapi] = useState("All QAPIs");
+  const [groupFilter, setGroupFilter] = useState<string | null>(null);
+
+  // Apply ?qapi=<id> on mount/hydrate so dashboard click-through pre-filters.
+  useEffect(() => {
+    if (!qapiIdFromUrl) return;
+    const match = qapis.find((q) => q.id === qapiIdFromUrl);
+    if (match) setSelectedQapi(match.title);
+  }, [qapiIdFromUrl, qapis]);
+
   const activeResidents = residents.filter((r) => r.status === "active");
 
   const [selectedResidents, setSelectedResidents] = useState<Set<string>>(
@@ -66,16 +82,24 @@ export default function ReportsPage() {
     const start = rangeStart(dateRange);
     const end = rangeEnd(dateRange);
 
+    const groupMembers = groupFilter
+      ? new Set(groups.find((g) => g.id === groupFilter)?.memberIds ?? [])
+      : null;
+
+    function residentInScope(rid: string) {
+      const groupOk = groupMembers ? groupMembers.has(rid) : true;
+      const explicitOk = selectedResidents.size === 0 || selectedResidents.has(rid);
+      return groupOk && explicitOk;
+    }
+
     const inRange = completedRounds.filter((r) => {
       const d = new Date(r.completedAt);
-      const resOk = selectedResidents.size === 0 || selectedResidents.has(r.residentId);
-      return d >= start && d <= end && resOk;
+      return d >= start && d <= end && residentInScope(r.residentId);
     });
 
     const issuesInRange = issues.filter((i) => {
       const d = new Date(i.createdAt);
-      const resOk = selectedResidents.size === 0 || selectedResidents.has(i.residentId);
-      return d >= start && d <= end && resOk;
+      return d >= start && d <= end && residentInScope(i.residentId);
     });
 
     const resolved = issuesInRange.filter((i) => i.status === "resolved").length;
@@ -106,7 +130,7 @@ export default function ReportsPage() {
     }).filter((d) => d.yes + d.no > 0);
 
     return { rounds: inRange.length, rate: `${rate}%`, issues: issuesInRange.length, resolved, missed: 0, qapiBars, drilldown };
-  }, [completedRounds, issues, qapis, templates, questions, dateRange, selectedQapi, selectedResidents]);
+  }, [completedRounds, issues, qapis, templates, questions, dateRange, selectedQapi, selectedResidents, groupFilter, groups]);
 
   return (
     <div className="max-w-[1200px] mx-auto" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -122,6 +146,12 @@ export default function ReportsPage() {
       {/* Report builder */}
       <div style={{ background: "var(--surface)", border: "1px solid var(--hair)", borderRadius: 12, padding: "18px 20px", boxShadow: "var(--shadow-sm)" }}>
         <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", marginBottom: 16 }}>Generate compliance report</div>
+
+        {/* Group filter (wings + custom carts) */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Resident group</div>
+          <GroupPills selectedId={groupFilter} onChange={setGroupFilter} />
+        </div>
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 16, alignItems: "flex-start" }}>
           {/* Date range */}

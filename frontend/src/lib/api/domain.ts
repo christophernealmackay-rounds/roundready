@@ -97,6 +97,7 @@ export async function updateUser(
     role: User['role'];
     departmentId: string | null;
     active: boolean;
+    notificationPrefs: User['notificationPrefs'];
   }>
 ): Promise<User> {
   const res = await api.PATCH('/api/v1/users/{user_id}', {
@@ -107,6 +108,7 @@ export async function updateUser(
       role: input.role,
       department_id: input.departmentId,
       active: input.active,
+      notification_prefs: input.notificationPrefs as { [k: string]: unknown } | null,
     },
   });
   return mapUser(unwrap(res));

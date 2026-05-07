@@ -38,6 +38,7 @@ export function mapUser(u: S['UserOut']): User {
     role: u.role as Role,
     departmentId: u.department_id ?? '',
     active: u.active,
+    notificationPrefs: (u.notification_prefs ?? {}) as User['notificationPrefs'],
   };
 }
 

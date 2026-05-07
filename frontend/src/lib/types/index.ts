@@ -6,6 +6,12 @@ export interface Department {
   custom: boolean;
 }
 
+export interface NotificationPrefs {
+  issues?: boolean;
+  reminders?: boolean;
+  summaries?: boolean;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -13,6 +19,7 @@ export interface User {
   role: Role;
   departmentId: string;
   active: boolean;
+  notificationPrefs: NotificationPrefs;
 }
 
 export interface Angel {

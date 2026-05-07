@@ -36,7 +36,7 @@ export default function UsersPage() {
 
   function saveAdd() {
     if (!form.name.trim() || !form.email.trim()) return;
-    addUser({ ...form, active: true });
+    addUser({ ...form, active: true, notificationPrefs: {} });
     setAddOpen(false);
     setForm({ name: "", email: "", role: "angel", departmentId: "dept-1" });
   }

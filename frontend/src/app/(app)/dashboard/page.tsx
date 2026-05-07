@@ -258,7 +258,7 @@ export default function DashboardPage() {
               const rateColor = q.rate === null ? "var(--muted)" : q.rate >= 90 ? "var(--green)" : q.rate >= 75 ? "var(--amber)" : "var(--red)";
               const rateBg   = q.rate === null ? "var(--surface)" : q.rate >= 90 ? "var(--green-tint)" : q.rate >= 75 ? "var(--amber-tint)" : "var(--red-tint)";
               return (
-                <Link key={q.id} href={`/reports`} style={{ textDecoration: "none" }}>
+                <Link key={q.id} href={`/reports?qapi=${q.id}`} style={{ textDecoration: "none" }}>
                   <div style={{ background: "var(--surface)", border: "1px solid var(--hair)", borderRadius: 12, padding: "14px 16px", boxShadow: "var(--shadow-sm)", cursor: "pointer", transition: "all 0.15s", display: "flex", flexDirection: "column", gap: 10 }}>
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
                       <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)", lineHeight: 1.3, flex: 1 }}>{q.title}</span>
