@@ -14,6 +14,7 @@ Story (DON/Admin demo):
 from __future__ import annotations
 
 import datetime as dt
+import json
 import random
 import uuid
 from typing import Any
@@ -217,14 +218,13 @@ async def run_seed(conn: asyncpg.Connection) -> dict:
     today = now.date()
 
     # ---- departments ----
-    dept_ids: dict[str, str] = {}
-    for name in DEPARTMENTS:
-        did = _uuid()
-        dept_ids[name] = did
-        await conn.execute(
-            "INSERT INTO departments (id, name, facility_id, custom) VALUES ($1, $2, $3, false)",
-            did, name, FACILITY_ID,
-        )
+    dept_ids: dict[str, str] = {name: _uuid() for name in DEPARTMENTS}
+    facility_uuid = uuid.UUID(FACILITY_ID)
+    await conn.copy_records_to_table(
+        "departments",
+        records=[(uuid.UUID(dept_ids[n]), n, facility_uuid, False) for n in DEPARTMENTS],
+        columns=["id", "name", "facility_id", "custom"],
+    )
 
     # ---- users ----
     # Track first-user-per-department so we can route notifications without a SELECT later.
@@ -234,138 +234,206 @@ async def run_seed(conn: asyncpg.Connection) -> dict:
         if dept_id and dept_id not in dept_to_first_user:
             dept_to_first_user[dept_id] = user_id
 
+    default_prefs = json.dumps({"issues": True, "reminders": True, "summaries": True})
     admin_id = _uuid()
-    await _insert_user(conn, admin_id, ADMIN_USER, dept_ids)
-    _record_dept_user(dept_ids.get(ADMIN_USER["department"]), admin_id)
-
-    angel_user_ids: list[str] = []
-    for profile in ANGEL_PROFILES:
-        uid = _uuid()
-        await _insert_user(conn, uid, {**profile, "role": "angel"}, dept_ids)
-        _record_dept_user(dept_ids.get(profile["department"]), uid)
-        angel_user_ids.append(uid)
-
+    angel_user_ids = [_uuid() for _ in ANGEL_PROFILES]
     charge_id = _uuid()
-    await _insert_user(conn, charge_id, CHARGE_USER, dept_ids)
-    _record_dept_user(dept_ids.get(CHARGE_USER["department"]), charge_id)
-
     viewer_id = _uuid()
-    await _insert_user(conn, viewer_id, VIEWER_USER, dept_ids)
-    _record_dept_user(dept_ids.get(VIEWER_USER["department"]), viewer_id)
+
+    user_records: list[tuple] = []
+    def _add_user(uid: str, profile: dict[str, Any], role: str) -> None:
+        dept_id = dept_ids.get(profile["department"])
+        _record_dept_user(dept_id, uid)
+        user_records.append((
+            uuid.UUID(uid),
+            profile["name"],
+            profile["email"],
+            role,
+            uuid.UUID(dept_id) if dept_id else None,
+            default_prefs,
+            True,
+        ))
+
+    _add_user(admin_id, ADMIN_USER, "admin")
+    for uid, profile in zip(angel_user_ids, ANGEL_PROFILES):
+        _add_user(uid, profile, "angel")
+    _add_user(charge_id, CHARGE_USER, CHARGE_USER["role"])
+    _add_user(viewer_id, VIEWER_USER, VIEWER_USER["role"])
+
+    await conn.copy_records_to_table(
+        "users",
+        records=user_records,
+        columns=["id", "name", "email", "role", "department_id", "notification_prefs", "active"],
+    )
 
     # ---- angels (one row per angel user) ----
-    angel_ids: list[str] = []
-    for user_id, profile in zip(angel_user_ids, ANGEL_PROFILES):
-        aid = _uuid()
-        angel_ids.append(aid)
-        await conn.execute(
-            "INSERT INTO angels (id, user_id, department_id, absent) VALUES ($1, $2, $3, false)",
-            aid, user_id, dept_ids[profile["department"]],
-        )
+    angel_ids = [_uuid() for _ in ANGEL_PROFILES]
+    await conn.copy_records_to_table(
+        "angels",
+        records=[
+            (uuid.UUID(aid), uuid.UUID(uid), uuid.UUID(dept_ids[p["department"]]), False)
+            for aid, uid, p in zip(angel_ids, angel_user_ids, ANGEL_PROFILES)
+        ],
+        columns=["id", "user_id", "department_id", "absent"],
+    )
 
     # ---- residents (assigned sequentially to angels by room order) ----
-    resident_ids: list[str] = []
+    resident_ids: list[str] = [_uuid() for _ in RESIDENTS]
     rooms_by_angel: dict[int, list[str]] = {i: [] for i in range(len(angel_ids))}
-    for idx, r in enumerate(RESIDENTS):
-        rid = _uuid()
-        resident_ids.append(rid)
+    resident_records: list[tuple] = []
+    for idx, (rid, r) in enumerate(zip(resident_ids, RESIDENTS)):
         # Sequential assignment so all beds in a room go to the same angel.
         # Group rooms in chunks of 4-5 per angel.
         angel_idx = min(idx // 4, len(angel_ids) - 1)
         rooms_by_angel[angel_idx].append(rid)
-        await conn.execute(
-            "INSERT INTO residents (id, name, room, bed, angel_id, status, pcc_id) "
-            "VALUES ($1, $2, $3, $4, $5, 'active', $6)",
-            rid, r["name"], r["room"], r["bed"], angel_ids[angel_idx], f"PCC-{idx+1001}",
-        )
+        resident_records.append((
+            uuid.UUID(rid),
+            r["name"],
+            r["room"],
+            r["bed"],
+            uuid.UUID(angel_ids[angel_idx]),
+            "active",
+            f"PCC-{idx+1001}",
+        ))
+    await conn.copy_records_to_table(
+        "residents",
+        records=resident_records,
+        columns=["id", "name", "room", "bed", "angel_id", "status", "pcc_id"],
+    )
 
     # ---- resident groups (Wing 100/200/300) ----
-    wing_groups: dict[str, str] = {}
-    for wing in ["100", "200", "300"]:
-        gid = _uuid()
-        wing_groups[wing] = gid
-        await conn.execute(
-            "INSERT INTO resident_groups (id, name, type, facility_id) VALUES ($1, $2, 'wing', $3)",
-            gid, f"Wing {wing}", FACILITY_ID,
-        )
+    wing_groups = {wing: _uuid() for wing in ["100", "200", "300"]}
+    await conn.copy_records_to_table(
+        "resident_groups",
+        records=[
+            (uuid.UUID(wing_groups[w]), f"Wing {w}", "wing", facility_uuid)
+            for w in ["100", "200", "300"]
+        ],
+        columns=["id", "name", "type", "facility_id"],
+    )
 
     # Wing membership derived from room number (e.g., 1xx -> Wing 100)
-    for rid, r in zip(resident_ids, RESIDENTS):
-        wing = r["room"][0] + "00"
-        await conn.execute(
-            "INSERT INTO resident_group_memberships (resident_id, group_id) VALUES ($1, $2)",
-            rid, wing_groups[wing],
-        )
+    await conn.copy_records_to_table(
+        "resident_group_memberships",
+        records=[
+            (uuid.UUID(rid), uuid.UUID(wing_groups[r["room"][0] + "00"]))
+            for rid, r in zip(resident_ids, RESIDENTS)
+        ],
+        columns=["resident_id", "group_id"],
+    )
 
     # ---- QAPIs and items ----
     active_qapi_id: str | None = None
     active_item_ids: list[str] = []
     qapi_item_dept_hint: dict[str, str] = {}  # item_id -> department name
 
+    qapi_records: list[tuple] = []
+    qapi_item_records: list[tuple] = []
+
     for qapi in QAPIS_ACTIVE:
         qid = _uuid()
         active_qapi_id = qid
-        await conn.execute(
-            "INSERT INTO qapis (id, title, status, issues_identified, date_identified) "
-            "VALUES ($1, $2, 'active', $3, $4)",
-            qid, qapi["title"], qapi["issues_identified"],
+        qapi_records.append((
+            uuid.UUID(qid), qapi["title"], "active",
+            qapi["issues_identified"],
             today + dt.timedelta(days=qapi["date_offset_days"]),
-        )
+        ))
         for item in qapi["items"]:
             iid = _uuid()
             active_item_ids.append(iid)
-            await conn.execute(
-                """INSERT INTO qapi_items
-                   (id, qapi_id, title, root_cause, systemic_change, monitoring_type,
-                    monitoring_detail, responsible, start_date, expected_completion, "order")
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)""",
-                iid, qid, item["title"], item["root_cause"], item["systemic_change"],
-                item["monitoring_type"], item["monitoring_detail"], item["responsible"],
+            qapi_item_records.append((
+                uuid.UUID(iid),
+                uuid.UUID(qid),
+                item["title"],
+                item["root_cause"],
+                item["systemic_change"],
+                item["monitoring_type"],
+                item["monitoring_detail"],
+                item["responsible"],
                 today + dt.timedelta(days=item["start_offset"]),
                 today + dt.timedelta(days=item["complete_offset"]),
                 item["order"],
-            )
-            # Hint: which department this item primarily concerns (drives question selection)
+            ))
             qapi_item_dept_hint[iid] = item["responsible"].split(",")[-1].strip()
 
     for qapi in QAPIS_ARCHIVED:
         qid = _uuid()
-        await conn.execute(
-            "INSERT INTO qapis (id, title, status, issues_identified, date_identified) "
-            "VALUES ($1, $2, 'archived', $3, $4)",
-            qid, qapi["title"], qapi["issues_identified"],
+        qapi_records.append((
+            uuid.UUID(qid), qapi["title"], "archived",
+            qapi["issues_identified"],
             today + dt.timedelta(days=qapi["date_offset_days"]),
-        )
+        ))
         for item in qapi["items"]:
-            await conn.execute(
-                """INSERT INTO qapi_items (id, qapi_id, title, responsible, "order")
-                   VALUES ($1, $2, $3, $4, $5)""",
-                _uuid(), qid, item["title"], item["responsible"], item["order"],
-            )
+            qapi_item_records.append((
+                uuid.UUID(_uuid()), uuid.UUID(qid), item["title"],
+                "", "", "rounds", "", item["responsible"],
+                None, None, item["order"],
+            ))
+
+    await conn.copy_records_to_table(
+        "qapis",
+        records=qapi_records,
+        columns=["id", "title", "status", "issues_identified", "date_identified"],
+    )
+    await conn.copy_records_to_table(
+        "qapi_items",
+        records=qapi_item_records,
+        columns=[
+            "id", "qapi_id", "title", "root_cause", "systemic_change",
+            "monitoring_type", "monitoring_detail", "responsible",
+            "start_date", "expected_completion", "order",
+        ],
+    )
 
     # ---- questions (repository) ----
     question_ids: list[str] = []
     questions_by_section: dict[str, list[tuple[str, dict[str, Any]]]] = {}
     q_to_dept: dict[str, str | None] = {}  # question_id -> notify_department_id (for issue routing)
+    question_records: list[tuple] = []
     for q in QUESTIONS:
         qid = _uuid()
         question_ids.append(qid)
         dept_id = dept_ids.get(q["department"])
         q_to_dept[qid] = dept_id
-        await conn.execute(
-            """INSERT INTO questions (id, text, section, issue_on, notify_department_id, in_repository)
-               VALUES ($1, $2, $3, $4, $5, true)""",
-            qid, q["text"], q["section"], q["issue_on"], dept_id,
-        )
+        question_records.append((
+            uuid.UUID(qid),
+            q["text"],
+            q["section"],
+            q["issue_on"],
+            uuid.UUID(dept_id) if dept_id else None,
+            True,
+        ))
         questions_by_section.setdefault(q["section"], []).append((qid, q))
+    await conn.copy_records_to_table(
+        "questions",
+        records=question_records,
+        columns=["id", "text", "section", "issue_on", "notify_department_id", "in_repository"],
+    )
 
-    # ---- active Angel Rounds template, sections per active QAPI item ----
+    # ---- templates, sections, template_questions: build all rows then COPY ----
     angel_template_id = _uuid()
-    await conn.execute(
-        """INSERT INTO round_templates (id, name, type, active, start_date)
-           VALUES ($1, $2, 'angel', true, $3)""",
-        angel_template_id, "Angel Rounds — Skin Integrity",
-        today + dt.timedelta(days=-28),
+    archived_rapid_id = _uuid()
+
+    template_records = [
+        (
+            uuid.UUID(angel_template_id), "Angel Rounds — Skin Integrity", "angel",
+            True,                                                # active
+            today + dt.timedelta(days=-28),                      # start_date
+            None,                                                # end_date
+            None,                                                # archived_at
+        ),
+        (
+            uuid.UUID(archived_rapid_id), "Flu Outbreak Survey (archived)", "rapid",
+            False,
+            today + dt.timedelta(days=-90),
+            today + dt.timedelta(days=-83),
+            now - dt.timedelta(days=83),
+        ),
+    ]
+    await conn.copy_records_to_table(
+        "round_templates",
+        records=template_records,
+        columns=["id", "name", "type", "active", "start_date", "end_date", "archived_at"],
     )
 
     # Section per active QAPI item, populated with relevant questions.
@@ -376,57 +444,70 @@ async def run_seed(conn: asyncpg.Connection) -> dict:
         ["Falls"],                    # Non-Slip Footwear
     ]
     template_question_ids: list[str] = []
+    section_records: list[tuple] = []
+    template_question_records: list[tuple] = []
+
     for idx, item_id in enumerate(active_item_ids):
         sec_id = _uuid()
         item_title = QAPIS_ACTIVE[0]["items"][idx]["title"]
-        await conn.execute(
-            """INSERT INTO template_sections (id, template_id, title, qapi_id, qapi_item_id, "order")
-               VALUES ($1, $2, $3, $4, $5, $6)""",
-            sec_id, angel_template_id, item_title, active_qapi_id, item_id, idx,
-        )
+        section_records.append((
+            uuid.UUID(sec_id),
+            uuid.UUID(angel_template_id),
+            item_title,
+            uuid.UUID(active_qapi_id) if active_qapi_id else None,
+            uuid.UUID(item_id),
+            idx,
+        ))
         order = 0
         for section_name in section_question_map[idx]:
             for qid, _qmeta in questions_by_section.get(section_name, []):
-                tqid = _uuid()
                 template_question_ids.append(qid)
-                await conn.execute(
-                    """INSERT INTO template_questions (id, section_id, question_id, "order")
-                       VALUES ($1, $2, $3, $4)""",
-                    tqid, sec_id, qid, order,
-                )
+                template_question_records.append((
+                    uuid.UUID(_uuid()),
+                    uuid.UUID(sec_id),
+                    uuid.UUID(qid),
+                    order,
+                ))
                 order += 1
 
     # Always include Safety section in the active template (catch-all for issue raising)
     safety_section_id = _uuid()
-    await conn.execute(
-        """INSERT INTO template_sections (id, template_id, title, "order")
-           VALUES ($1, $2, 'Safety & General', 99)""",
-        safety_section_id, angel_template_id,
-    )
+    section_records.append((
+        uuid.UUID(safety_section_id),
+        uuid.UUID(angel_template_id),
+        "Safety & General",
+        None,    # qapi_id
+        None,    # qapi_item_id
+        99,
+    ))
     safety_order = 0
     for section_name in ["Safety", "General"]:
         for qid, _qmeta in questions_by_section.get(section_name, []):
-            await conn.execute(
-                """INSERT INTO template_questions (id, section_id, question_id, "order")
-                   VALUES ($1, $2, $3, $4)""",
-                _uuid(), safety_section_id, qid, safety_order,
-            )
+            template_question_records.append((
+                uuid.UUID(_uuid()),
+                uuid.UUID(safety_section_id),
+                uuid.UUID(qid),
+                safety_order,
+            ))
             template_question_ids.append(qid)
             safety_order += 1
 
-    # ---- archived RapidRound template ----
-    archived_rapid_id = _uuid()
-    await conn.execute(
-        """INSERT INTO round_templates (id, name, type, active, start_date, end_date, archived_at)
-           VALUES ($1, $2, 'rapid', false, $3, $4, $5)""",
-        archived_rapid_id, "Flu Outbreak Survey (archived)",
-        today + dt.timedelta(days=-90), today + dt.timedelta(days=-83),
-        now - dt.timedelta(days=83),
+    await conn.copy_records_to_table(
+        "template_sections",
+        records=section_records,
+        columns=["id", "template_id", "title", "qapi_id", "qapi_item_id", "order"],
     )
+    await conn.copy_records_to_table(
+        "template_questions",
+        records=template_question_records,
+        columns=["id", "section_id", "question_id", "order"],
+    )
+
 
     # ---- 21 days of rounds: each angel rounds each of their residents ~85% of days ----
     template_unique_qids = list(dict.fromkeys(template_question_ids))  # dedupe, preserve order
     rounds_inserted = 0
+    rounds_buffer: list[tuple] = []
     answers_buffer: list[tuple] = []
     issues_buffer: list[dict] = []
 
@@ -448,12 +529,14 @@ async def run_seed(conn: asyncpg.Connection) -> dict:
                     second=rng.randint(0, 59),
                     microsecond=0,
                 )
-                await conn.execute(
-                    """INSERT INTO rounds (id, template_id, angel_id, resident_id, completed_at, created_at)
-                       VALUES ($1, $2, $3, $4, $5, $5)""",
-                    round_id, angel_template_id, angel_id, resident_id,
+                rounds_buffer.append((
+                    uuid.UUID(round_id),
+                    uuid.UUID(angel_template_id),
+                    uuid.UUID(angel_id),
+                    uuid.UUID(resident_id),
                     completed_at,
-                )
+                    completed_at,  # created_at
+                ))
                 rounds_inserted += 1
                 # Generate an answer per question
                 for qid in template_unique_qids:
@@ -461,7 +544,12 @@ async def run_seed(conn: asyncpg.Connection) -> dict:
                     flagged = rng.random() < 0.07
                     answer = not flagged  # most answers OK
                     answers_buffer.append((
-                        _uuid(), round_id, qid, answer, flagged, completed_at,
+                        uuid.UUID(_uuid()),
+                        uuid.UUID(round_id),
+                        uuid.UUID(qid),
+                        answer,
+                        flagged,
+                        completed_at,
                     ))
                     if flagged:
                         issues_buffer.append({
@@ -472,11 +560,20 @@ async def run_seed(conn: asyncpg.Connection) -> dict:
                             "completed_at": completed_at,
                         })
 
+    # Bulk-load rounds via COPY (single round-trip vs. ~345 INSERTs).
+    if rounds_buffer:
+        await conn.copy_records_to_table(
+            "rounds",
+            records=rounds_buffer,
+            columns=["id", "template_id", "angel_id", "resident_id", "completed_at", "created_at"],
+        )
+
+    # Bulk-load round_answers via COPY (single round-trip vs. ~5175 INSERTs).
     if answers_buffer:
-        await conn.executemany(
-            """INSERT INTO round_answers (id, round_id, question_id, answer, issue_flagged, created_at)
-               VALUES ($1, $2, $3, $4, $5, $6)""",
-            answers_buffer,
+        await conn.copy_records_to_table(
+            "round_answers",
+            records=answers_buffer,
+            columns=["id", "round_id", "question_id", "answer", "issue_flagged", "created_at"],
         )
 
     # ---- issues (cap to ~30 with realistic open/resolved split) ----
@@ -497,37 +594,60 @@ async def run_seed(conn: asyncpg.Connection) -> dict:
         "Mood concern referred to social services; visit conducted.",
     ]
 
+    issues_records: list[tuple] = []
+    notifications_records: list[tuple] = []
     for idx, issue in enumerate(issues_capped):
         iid = _uuid()
         is_resolved = idx < issue_resolution_split
         dept_id = q_to_dept.get(issue["question_id"])
-        await conn.execute(
-            """INSERT INTO issues
-               (id, round_id, question_id, resident_id, angel_id, department_id,
-                status, created_at, resolved_at, resolved_by, resolution_notes)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)""",
-            iid, issue["round_id"], issue["question_id"], issue["resident_id"],
-            issue["angel_id"], dept_id,
+        issues_records.append((
+            uuid.UUID(iid),
+            uuid.UUID(issue["round_id"]),
+            uuid.UUID(issue["question_id"]),
+            uuid.UUID(issue["resident_id"]),
+            uuid.UUID(issue["angel_id"]),
+            uuid.UUID(dept_id) if dept_id else None,
             "resolved" if is_resolved else "open",
             issue["completed_at"],
             issue["completed_at"] + dt.timedelta(hours=rng.randint(2, 36)) if is_resolved else None,
-            charge_id if is_resolved else None,
+            uuid.UUID(charge_id) if is_resolved else None,
             rng.choice(resolution_notes_pool) if is_resolved else None,
-        )
+        ))
 
         # ---- issue_notifications: notify the responsible dept head + DON for every issue ----
         notify_user = dept_to_first_user.get(dept_id) if dept_id is not None else None
         if notify_user is not None and notify_user != admin_id:
-            await conn.execute(
-                """INSERT INTO issue_notifications (id, issue_id, notified_user_id, notified_at, channel)
-                   VALUES ($1, $2, $3, $4, 'in_app')""",
-                _uuid(), iid, notify_user, issue["completed_at"],
-            )
+            notifications_records.append((
+                uuid.UUID(_uuid()),
+                uuid.UUID(iid),
+                uuid.UUID(notify_user),
+                issue["completed_at"],
+                "in_app",
+            ))
         # Always notify the DON
-        await conn.execute(
-            """INSERT INTO issue_notifications (id, issue_id, notified_user_id, notified_at, channel)
-               VALUES ($1, $2, $3, $4, 'in_app')""",
-            _uuid(), iid, admin_id, issue["completed_at"],
+        notifications_records.append((
+            uuid.UUID(_uuid()),
+            uuid.UUID(iid),
+            uuid.UUID(admin_id),
+            issue["completed_at"],
+            "in_app",
+        ))
+
+    if issues_records:
+        await conn.copy_records_to_table(
+            "issues",
+            records=issues_records,
+            columns=[
+                "id", "round_id", "question_id", "resident_id", "angel_id",
+                "department_id", "status", "created_at", "resolved_at",
+                "resolved_by", "resolution_notes",
+            ],
+        )
+    if notifications_records:
+        await conn.copy_records_to_table(
+            "issue_notifications",
+            records=notifications_records,
+            columns=["id", "issue_id", "notified_user_id", "notified_at", "channel"],
         )
 
     # ---- QAA notes ----
@@ -554,18 +674,3 @@ async def run_seed(conn: asyncpg.Connection) -> dict:
         "issues_resolved": min(issue_resolution_split, len(issues_capped)),
         "qaa_notes": 1,
     }
-
-
-async def _insert_user(
-    conn: asyncpg.Connection,
-    user_id: str,
-    profile: dict[str, Any],
-    dept_ids: dict[str, str],
-) -> None:
-    await conn.execute(
-        """INSERT INTO users (id, name, email, role, department_id, notification_prefs, active)
-           VALUES ($1, $2, $3, $4, $5, $6::jsonb, true)""",
-        user_id, profile["name"], profile["email"], profile["role"],
-        dept_ids.get(profile["department"]),
-        '{"issues": true, "reminders": true, "summaries": true}',
-    )
