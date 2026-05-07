@@ -1,68 +1,120 @@
 import { create } from 'zustand';
-import type { Qapi, QapiItem, QaaNotes } from '../types';
-import { qapis as seedQapis, qaaNotes as seedNotes } from '../seed';
+import type { QaaNotes, Qapi, QapiItem } from '../types';
+import {
+  createQapi,
+  createQapiItem,
+  deleteQapiItem,
+  getQaaNotes,
+  listQapis,
+  updateQapi as apiUpdateQapi,
+  updateQapiItem as apiUpdateQapiItem,
+  updateQaaNotes,
+} from '../api';
 
 interface QapiState {
   qapis: Qapi[];
   notes: QaaNotes;
-  addQapi: (q: Omit<Qapi, 'id' | 'items'>) => void;
-  updateQapi: (q: Qapi) => void;
-  archiveQapi: (id: string) => void;
-  restoreQapi: (id: string) => void;
-  addItem: (qapiId: string, item: Omit<QapiItem, 'id' | 'qapiId' | 'order'>) => void;
-  updateItem: (item: QapiItem) => void;
-  removeItem: (qapiId: string, itemId: string) => void;
-  updateNotes: (content: string) => void;
+  hydrate: (data: { qapis: Qapi[]; notes: QaaNotes }) => void;
+  refresh: () => Promise<void>;
+  addQapi: (q: Omit<Qapi, 'id' | 'items'>) => Promise<Qapi>;
+  updateQapi: (q: Qapi) => Promise<Qapi>;
+  archiveQapi: (id: string) => Promise<Qapi>;
+  restoreQapi: (id: string) => Promise<Qapi>;
+  addItem: (
+    qapiId: string,
+    item: Omit<QapiItem, 'id' | 'qapiId' | 'order'>
+  ) => Promise<QapiItem>;
+  updateItem: (item: QapiItem) => Promise<QapiItem>;
+  removeItem: (qapiId: string, itemId: string) => Promise<void>;
+  updateNotes: (content: string) => Promise<void>;
+}
+
+function replace(qapis: Qapi[], updated: Qapi): Qapi[] {
+  return qapis.map((q) => (q.id === updated.id ? updated : q));
 }
 
 export const useQapiStore = create<QapiState>((set) => ({
-  qapis: seedQapis,
-  notes: seedNotes,
+  qapis: [],
+  notes: { content: '', updatedAt: '' },
 
-  addQapi: (q) => set((s) => ({
-    qapis: [
-      ...s.qapis,
-      { ...q, id: `qapi-${Date.now()}`, items: [] },
-    ],
-  })),
+  hydrate: ({ qapis, notes }) => set({ qapis, notes }),
 
-  updateQapi: (q) => set((s) => ({
-    qapis: s.qapis.map((x) => (x.id === q.id ? q : x)),
-  })),
+  refresh: async () => {
+    const [qapis, notes] = await Promise.all([listQapis(), getQaaNotes()]);
+    set({ qapis, notes });
+  },
 
-  archiveQapi: (id) => set((s) => ({
-    qapis: s.qapis.map((q) => (q.id === id ? { ...q, status: 'archived' } : q)),
-  })),
+  addQapi: async (q) => {
+    const created = await createQapi({
+      title: q.title,
+      issuesIdentified: q.issuesIdentified,
+      dateIdentified: q.dateIdentified || null,
+    });
+    set((s) => ({ qapis: [...s.qapis, created] }));
+    return created;
+  },
 
-  restoreQapi: (id) => set((s) => ({
-    qapis: s.qapis.map((q) => (q.id === id ? { ...q, status: 'active' } : q)),
-  })),
+  updateQapi: async (q) => {
+    const updated = await apiUpdateQapi(q.id, {
+      title: q.title,
+      status: q.status,
+      issuesIdentified: q.issuesIdentified,
+      dateIdentified: q.dateIdentified || null,
+    });
+    set((s) => ({ qapis: replace(s.qapis, updated) }));
+    return updated;
+  },
 
-  addItem: (qapiId, item) => set((s) => ({
-    qapis: s.qapis.map((q) => {
-      if (q.id !== qapiId) return q;
-      const newItem: QapiItem = {
-        ...item, id: `qitem-${Date.now()}`, qapiId, order: q.items.length + 1,
-      };
-      return { ...q, items: [...q.items, newItem] };
-    }),
-  })),
+  archiveQapi: async (id) => {
+    const updated = await apiUpdateQapi(id, { status: 'archived' });
+    set((s) => ({ qapis: replace(s.qapis, updated) }));
+    return updated;
+  },
 
-  updateItem: (item) => set((s) => ({
-    qapis: s.qapis.map((q) =>
-      q.id === item.qapiId
-        ? { ...q, items: q.items.map((i) => (i.id === item.id ? item : i)) }
-        : q
-    ),
-  })),
+  restoreQapi: async (id) => {
+    const updated = await apiUpdateQapi(id, { status: 'active' });
+    set((s) => ({ qapis: replace(s.qapis, updated) }));
+    return updated;
+  },
 
-  removeItem: (qapiId, itemId) => set((s) => ({
-    qapis: s.qapis.map((q) =>
-      q.id === qapiId ? { ...q, items: q.items.filter((i) => i.id !== itemId) } : q
-    ),
-  })),
+  addItem: async (qapiId, item) => {
+    const created = await createQapiItem(qapiId, item);
+    set((s) => ({
+      qapis: s.qapis.map((q) =>
+        q.id === qapiId ? { ...q, items: [...q.items, created] } : q
+      ),
+    }));
+    return created;
+  },
 
-  updateNotes: (content) => set({
-    notes: { content, updatedAt: new Date().toISOString() },
-  }),
+  updateItem: async (item) => {
+    const updated = await apiUpdateQapiItem(item.qapiId, item.id, item);
+    set((s) => ({
+      qapis: s.qapis.map((q) =>
+        q.id === updated.qapiId
+          ? {
+              ...q,
+              items: q.items.map((i) => (i.id === updated.id ? updated : i)),
+            }
+          : q
+      ),
+    }));
+    return updated;
+  },
+
+  removeItem: async (qapiId, itemId) => {
+    await deleteQapiItem(qapiId, itemId);
+    set((s) => ({
+      qapis: s.qapis.map((q) =>
+        q.id === qapiId
+          ? { ...q, items: q.items.filter((i) => i.id !== itemId) }
+          : q
+      ),
+    }));
+  },
+
+  updateNotes: async (content) => {
+    const notes = await updateQaaNotes(content);
+    set({ notes });
+  },
 }));

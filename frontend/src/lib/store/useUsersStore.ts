@@ -1,38 +1,77 @@
 import { create } from 'zustand';
 import type { User, Department } from '../types';
-import { users as seedUsers, departments as seedDepts } from '../seed';
+import {
+  createDepartment,
+  createUser,
+  deleteDepartment,
+  listDepartments,
+  listUsers,
+  updateUser as apiUpdateUser,
+} from '../api';
 
 interface UsersState {
   users: User[];
   departments: Department[];
-  addUser: (u: Omit<User, 'id'>) => void;
-  updateUser: (u: User) => void;
-  deactivateUser: (id: string) => void;
-  addDepartment: (name: string) => void;
-  removeDepartment: (id: string) => void;
+  hydrate: (data: { users: User[]; departments: Department[] }) => void;
+  refresh: () => Promise<void>;
+  addUser: (u: Omit<User, 'id'>) => Promise<User>;
+  updateUser: (u: User) => Promise<User>;
+  deactivateUser: (id: string) => Promise<User>;
+  addDepartment: (name: string) => Promise<Department>;
+  removeDepartment: (id: string) => Promise<void>;
 }
 
 export const useUsersStore = create<UsersState>((set) => ({
-  users: seedUsers,
-  departments: seedDepts,
+  users: [],
+  departments: [],
 
-  addUser: (u) => set((s) => ({
-    users: [...s.users, { ...u, id: `user-${Date.now()}` }],
-  })),
+  hydrate: ({ users, departments }) => set({ users, departments }),
 
-  updateUser: (u) => set((s) => ({
-    users: s.users.map((x) => (x.id === u.id ? u : x)),
-  })),
+  refresh: async () => {
+    const [users, departments] = await Promise.all([
+      listUsers(),
+      listDepartments(),
+    ]);
+    set({ users, departments });
+  },
 
-  deactivateUser: (id) => set((s) => ({
-    users: s.users.map((u) => (u.id === id ? { ...u, active: false } : u)),
-  })),
+  addUser: async (u) => {
+    const created = await createUser({
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      departmentId: u.departmentId,
+    });
+    set((s) => ({ users: [...s.users, created] }));
+    return created;
+  },
 
-  addDepartment: (name) => set((s) => ({
-    departments: [...s.departments, { id: `dept-${Date.now()}`, name, custom: true }],
-  })),
+  updateUser: async (u) => {
+    const updated = await apiUpdateUser(u.id, {
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      departmentId: u.departmentId,
+      active: u.active,
+    });
+    set((s) => ({ users: s.users.map((x) => (x.id === u.id ? updated : x)) }));
+    return updated;
+  },
 
-  removeDepartment: (id) => set((s) => ({
-    departments: s.departments.filter((d) => d.id !== id),
-  })),
+  deactivateUser: async (id) => {
+    const updated = await apiUpdateUser(id, { active: false });
+    set((s) => ({ users: s.users.map((x) => (x.id === id ? updated : x)) }));
+    return updated;
+  },
+
+  addDepartment: async (name) => {
+    const created = await createDepartment(name);
+    set((s) => ({ departments: [...s.departments, created] }));
+    return created;
+  },
+
+  removeDepartment: async (id) => {
+    await deleteDepartment(id);
+    set((s) => ({ departments: s.departments.filter((d) => d.id !== id) }));
+  },
 }));

@@ -1,34 +1,35 @@
 import { create } from 'zustand';
 import type { Issue } from '../types';
-import { issues as seedIssues } from '../seed';
+import {
+  listIssues,
+  reopenIssue as apiReopen,
+  resolveIssue as apiResolve,
+} from '../api';
 
 interface IssuesState {
   issues: Issue[];
-  addIssue: (issue: Omit<Issue, 'id'>) => void;
-  resolveIssue: (id: string, resolvedBy: string, notes: string) => void;
-  reopenIssue: (id: string) => void;
+  hydrate: (issues: Issue[]) => void;
+  refresh: () => Promise<void>;
+  resolveIssue: (id: string, resolvedBy: string, notes: string) => Promise<void>;
+  reopenIssue: (id: string) => Promise<void>;
 }
 
 export const useIssuesStore = create<IssuesState>((set) => ({
-  issues: seedIssues,
+  issues: [],
 
-  addIssue: (issue) => set((s) => ({
-    issues: [...s.issues, { ...issue, id: `issue-${Date.now()}` }],
-  })),
+  hydrate: (issues) => set({ issues }),
 
-  resolveIssue: (id, resolvedBy, notes) => set((s) => ({
-    issues: s.issues.map((i) =>
-      i.id === id
-        ? { ...i, status: 'resolved', resolvedAt: new Date().toISOString(), resolvedBy, resolutionNotes: notes }
-        : i
-    ),
-  })),
+  refresh: async () => {
+    set({ issues: await listIssues() });
+  },
 
-  reopenIssue: (id) => set((s) => ({
-    issues: s.issues.map((i) =>
-      i.id === id
-        ? { ...i, status: 'open', resolvedAt: undefined, resolvedBy: undefined, resolutionNotes: undefined }
-        : i
-    ),
-  })),
+  resolveIssue: async (id, resolvedBy, notes) => {
+    const updated = await apiResolve(id, resolvedBy, notes);
+    set((s) => ({ issues: s.issues.map((i) => (i.id === id ? updated : i)) }));
+  },
+
+  reopenIssue: async (id) => {
+    const updated = await apiReopen(id);
+    set((s) => ({ issues: s.issues.map((i) => (i.id === id ? updated : i)) }));
+  },
 }));

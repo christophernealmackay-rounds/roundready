@@ -103,28 +103,42 @@ async def list_rounds(
         params["completed_at"] = f"lte.{date_to}T23:59:59Z"
 
     rounds = await db.select("rounds", params)
+    if not rounds:
+        return []
 
-    # Enrich with joined names + flag count.
+    # Batch all join lookups so list returns in one round-trip per table
+    # instead of N round-trips per round.
+    residents = {
+        r["id"]: r
+        for r in await db.select("residents", {"select": "id,name,room"})
+    }
+    angels = {a["id"]: a for a in await db.select("angels", {"select": "id,user_id"})}
+    users = {u["id"]: u for u in await db.select("users", {"select": "id,name"})}
+    templates = {
+        t["id"]: t for t in await db.select("round_templates", {"select": "id,name"})
+    }
+
+    # Pull all flagged answers for the rounds we care about in a single query.
+    flagged = await db.select(
+        "round_answers",
+        {"select": "round_id", "issue_flagged": "eq.true"},
+    )
+    flag_count: dict[str, int] = {}
+    for f in flagged:
+        flag_count[f["round_id"]] = flag_count.get(f["round_id"], 0) + 1
+
     out = []
     for r in rounds:
         item = dict(r)
-        rrows = await db.select("residents", {"id": f"eq.{r['resident_id']}"})
-        if rrows:
-            item["resident_name"] = rrows[0]["name"]
-            item["resident_room"] = rrows[0]["room"]
-        arows = await db.select("angels", {"id": f"eq.{r['angel_id']}"})
-        if arows:
-            urows = await db.select("users", {"id": f"eq.{arows[0]['user_id']}"})
-            if urows:
-                item["angel_name"] = urows[0]["name"]
-        trows = await db.select("round_templates", {"id": f"eq.{r['template_id']}"})
-        if trows:
-            item["template_name"] = trows[0]["name"]
-        flags = await db.select("round_answers", {
-            "round_id": f"eq.{r['id']}",
-            "issue_flagged": "eq.true",
-        })
-        item["flags_raised"] = len(flags)
+        if (resident := residents.get(r["resident_id"])):
+            item["resident_name"] = resident["name"]
+            item["resident_room"] = resident["room"]
+        if (angel := angels.get(r["angel_id"])):
+            if (user := users.get(angel["user_id"])):
+                item["angel_name"] = user["name"]
+        if (template := templates.get(r["template_id"])):
+            item["template_name"] = template["name"]
+        item["flags_raised"] = flag_count.get(r["id"], 0)
         out.append(item)
     return out
 

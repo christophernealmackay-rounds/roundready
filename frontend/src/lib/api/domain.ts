@@ -11,6 +11,7 @@ import {
   mapIssue,
   mapQaaNote,
   mapQapi,
+  mapQapiItem,
   mapQuestion,
   mapResident,
   mapResidentGroup,
@@ -25,6 +26,7 @@ import type {
   Issue,
   QaaNotes,
   Qapi,
+  QapiItem,
   Question,
   Resident,
   ResidentGroup,
@@ -49,16 +51,88 @@ export async function listDepartments(): Promise<Department[]> {
   return unwrap(res).map(mapDepartment);
 }
 
+export async function createDepartment(name: string): Promise<Department> {
+  const res = await api.POST('/api/v1/departments', {
+    body: { name, custom: true },
+  });
+  return mapDepartment(unwrap(res));
+}
+
+export async function deleteDepartment(deptId: string): Promise<void> {
+  const res = await api.DELETE('/api/v1/departments/{dept_id}', {
+    params: { path: { dept_id: deptId } },
+  });
+  unwrap(res);
+}
+
 // ── Users ───────────────────────────────────────────────────────────────────
 export async function listUsers(): Promise<User[]> {
   const res = await api.GET('/api/v1/users');
   return unwrap(res).map(mapUser);
 }
 
+export async function createUser(input: {
+  name: string;
+  email: string;
+  role: User['role'];
+  departmentId: string;
+}): Promise<User> {
+  const res = await api.POST('/api/v1/users', {
+    body: {
+      name: input.name,
+      email: input.email,
+      role: input.role,
+      department_id: input.departmentId || null,
+      notification_prefs: {},
+    },
+  });
+  return mapUser(unwrap(res));
+}
+
+export async function updateUser(
+  userId: string,
+  input: Partial<{
+    name: string;
+    email: string;
+    role: User['role'];
+    departmentId: string | null;
+    active: boolean;
+  }>
+): Promise<User> {
+  const res = await api.PATCH('/api/v1/users/{user_id}', {
+    params: { path: { user_id: userId } },
+    body: {
+      name: input.name,
+      email: input.email,
+      role: input.role,
+      department_id: input.departmentId,
+      active: input.active,
+    },
+  });
+  return mapUser(unwrap(res));
+}
+
+export async function deleteUser(userId: string): Promise<void> {
+  const res = await api.DELETE('/api/v1/users/{user_id}', {
+    params: { path: { user_id: userId } },
+  });
+  unwrap(res);
+}
+
 // ── Angels ──────────────────────────────────────────────────────────────────
 export async function listAngels(): Promise<Angel[]> {
   const res = await api.GET('/api/v1/angels');
   return unwrap(res).map(mapAngel);
+}
+
+export async function createAngel(input: {
+  userId: string;
+  departmentId: string;
+}): Promise<Angel> {
+  const res = await api.POST('/api/v1/angels', {
+    body: { user_id: input.userId, department_id: input.departmentId || null },
+  });
+  return mapAngel(unwrap(res));
 }
 
 export async function setAngelAbsent(
@@ -156,16 +230,155 @@ export async function listQapis(): Promise<Qapi[]> {
   return unwrap(res).map(mapQapi);
 }
 
+export async function createQapi(input: {
+  title: string;
+  issuesIdentified?: string;
+  dateIdentified?: string | null;
+}): Promise<Qapi> {
+  const res = await api.POST('/api/v1/qapis', {
+    body: {
+      title: input.title,
+      issues_identified: input.issuesIdentified ?? '',
+      date_identified: input.dateIdentified ?? null,
+    },
+  });
+  return mapQapi(unwrap(res));
+}
+
+export async function updateQapi(
+  qapiId: string,
+  input: Partial<{
+    title: string;
+    status: Qapi['status'];
+    issuesIdentified: string;
+    dateIdentified: string | null;
+  }>
+): Promise<Qapi> {
+  const res = await api.PATCH('/api/v1/qapis/{qapi_id}', {
+    params: { path: { qapi_id: qapiId } },
+    body: {
+      title: input.title,
+      status: input.status,
+      issues_identified: input.issuesIdentified,
+      date_identified: input.dateIdentified,
+    },
+  });
+  return mapQapi(unwrap(res));
+}
+
+export async function deleteQapi(qapiId: string): Promise<void> {
+  const res = await api.DELETE('/api/v1/qapis/{qapi_id}', {
+    params: { path: { qapi_id: qapiId } },
+  });
+  unwrap(res);
+}
+
+export async function createQapiItem(
+  qapiId: string,
+  input: Omit<QapiItem, 'id' | 'qapiId' | 'order'>
+): Promise<QapiItem> {
+  const res = await api.POST('/api/v1/qapis/{qapi_id}/items', {
+    params: { path: { qapi_id: qapiId } },
+    body: {
+      title: input.title,
+      root_cause: input.rootCause,
+      systemic_change: input.systemicChange,
+      monitoring_type: input.monitoringType,
+      monitoring_detail: input.monitoringDetail,
+      responsible: input.responsible,
+      start_date: input.startDate || null,
+      expected_completion: input.expectedCompletion || null,
+      order: 0,
+    },
+  });
+  return mapQapiItem(unwrap(res));
+}
+
+export async function updateQapiItem(
+  qapiId: string,
+  itemId: string,
+  input: Partial<Omit<QapiItem, 'id' | 'qapiId'>>
+): Promise<QapiItem> {
+  const res = await api.PATCH('/api/v1/qapis/{qapi_id}/items/{item_id}', {
+    params: { path: { qapi_id: qapiId, item_id: itemId } },
+    body: {
+      title: input.title,
+      root_cause: input.rootCause,
+      systemic_change: input.systemicChange,
+      monitoring_type: input.monitoringType,
+      monitoring_detail: input.monitoringDetail,
+      responsible: input.responsible,
+      start_date: input.startDate,
+      expected_completion: input.expectedCompletion,
+      order: input.order,
+    },
+  });
+  return mapQapiItem(unwrap(res));
+}
+
+export async function deleteQapiItem(
+  qapiId: string,
+  itemId: string
+): Promise<void> {
+  const res = await api.DELETE('/api/v1/qapis/{qapi_id}/items/{item_id}', {
+    params: { path: { qapi_id: qapiId, item_id: itemId } },
+  });
+  unwrap(res);
+}
+
 // ── Questions ───────────────────────────────────────────────────────────────
 export async function listQuestions(): Promise<Question[]> {
   const res = await api.GET('/api/v1/questions');
   return unwrap(res).map(mapQuestion);
 }
 
+export async function createQuestion(input: {
+  text: string;
+  section?: string;
+  issueOn: Question['issueOn'];
+  notifyDepartmentId?: string;
+  inRepository?: boolean;
+}): Promise<Question> {
+  const res = await api.POST('/api/v1/questions', {
+    body: {
+      text: input.text,
+      section: input.section ?? '',
+      issue_on: input.issueOn,
+      notify_department_id: input.notifyDepartmentId || null,
+      in_repository: input.inRepository ?? true,
+    },
+  });
+  return mapQuestion(unwrap(res));
+}
+
+export async function deleteQuestion(questionId: string): Promise<void> {
+  const res = await api.DELETE('/api/v1/questions/{question_id}', {
+    params: { path: { question_id: questionId } },
+  });
+  unwrap(res);
+}
+
 // ── Rounds ──────────────────────────────────────────────────────────────────
 export async function listRoundTemplates(): Promise<RoundTemplate[]> {
   const res = await api.GET('/api/v1/rounds/templates');
   return unwrap(res).map(mapRoundTemplate);
+}
+
+export async function createRoundTemplate(input: {
+  name: string;
+  type: RoundTemplate['type'];
+  startDate?: string;
+  endDate?: string;
+}): Promise<RoundTemplate> {
+  const res = await api.POST('/api/v1/rounds/templates', {
+    body: {
+      name: input.name,
+      type: input.type,
+      start_date: input.startDate || null,
+      end_date: input.endDate || null,
+    },
+  });
+  return mapRoundTemplate(unwrap(res));
 }
 
 export async function listRounds(): Promise<CompletedRound[]> {

@@ -23,7 +23,6 @@ export interface Angel {
   department: string;
   absent: boolean;
   absentSince?: string;
-  originalResidentIds?: string[];
 }
 
 export interface Resident {

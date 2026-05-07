@@ -87,7 +87,7 @@ export default function ResidentsPage() {
           <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Census and angel assignments</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => autoAssign(activeAngels.map((a) => a.id))} style={{ fontSize: 12, fontWeight: 500, padding: "7px 14px", borderRadius: 8, border: "1px solid var(--hair-strong)", background: "var(--surface)", color: "var(--ink-soft)", cursor: "pointer" }}>
+          <button onClick={() => autoAssign()} style={{ fontSize: 12, fontWeight: 500, padding: "7px 14px", borderRadius: 8, border: "1px solid var(--hair-strong)", background: "var(--surface)", color: "var(--ink-soft)", cursor: "pointer" }}>
             Auto-assign all
           </button>
           <button style={{ fontSize: 12, fontWeight: 500, padding: "7px 14px", borderRadius: 8, border: "1px solid var(--hair-strong)", background: "var(--surface)", color: "var(--ink-soft)", cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>

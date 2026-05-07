@@ -24,7 +24,7 @@ export default function AngelsPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [absentModal, setAbsentModal] = useState<Angel | null>(null);
   const [addOpen, setAddOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", departmentId: "dept-1" });
+  const [form, setForm] = useState({ userId: "", departmentId: "" });
   const [redistributed, setRedistributed] = useState(false);
 
   const absentAngels = angels.filter((a) => a.absent);
@@ -41,11 +41,10 @@ export default function AngelsPage() {
   }
 
   function saveAdd() {
-    if (!form.name.trim()) return;
-    const dept = departments.find((d) => d.id === form.departmentId);
-    addAngel({ userId: `user-${Date.now()}`, name: form.name, departmentId: form.departmentId, department: dept?.name ?? "", absent: false });
+    if (!form.userId || !form.departmentId) return;
+    addAngel({ userId: form.userId, departmentId: form.departmentId });
     setAddOpen(false);
-    setForm({ name: "", departmentId: "dept-1" });
+    setForm({ userId: "", departmentId: "" });
   }
 
   const kpiCards: { id: Filter; label: string; value: number; color: string }[] = [
@@ -173,12 +172,16 @@ export default function AngelsPage() {
               <button onClick={() => setAddOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)" }}><X size={16} /></button>
             </div>
             <div style={{ marginBottom: 14 }}>
-              <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: "var(--muted)", marginBottom: 5 }}>Full name</label>
-              <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--hair)", background: "var(--surface-alt)", fontSize: 13, color: "var(--ink)", outline: "none", boxSizing: "border-box" }} placeholder="e.g. Sarah Johnson" />
+              <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: "var(--muted)", marginBottom: 5 }}>User</label>
+              <select value={form.userId} onChange={(e) => setForm((f) => ({ ...f, userId: e.target.value }))} style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--hair)", background: "var(--surface-alt)", fontSize: 13, color: "var(--ink)", outline: "none", cursor: "pointer" }}>
+                <option value="">Select a user…</option>
+                {users.filter((u) => u.role === "angel").map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
             </div>
             <div style={{ marginBottom: 20 }}>
               <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: "var(--muted)", marginBottom: 5 }}>Department</label>
               <select value={form.departmentId} onChange={(e) => setForm((f) => ({ ...f, departmentId: e.target.value }))} style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--hair)", background: "var(--surface-alt)", fontSize: 13, color: "var(--ink)", outline: "none", cursor: "pointer" }}>
+                <option value="">Select a department…</option>
                 {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             </div>

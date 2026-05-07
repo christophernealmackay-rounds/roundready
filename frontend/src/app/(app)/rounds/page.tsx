@@ -80,7 +80,7 @@ export default function RoundsPage() {
 
   function createRapid() {
     if (!rapidForm.name.trim()) return;
-    addTemplate({ name: rapidForm.name, type: "rapid", active: true, startDate: rapidForm.startDate || new Date().toISOString().split("T")[0], endDate: rapidForm.endDate || undefined });
+    addTemplate({ name: rapidForm.name, type: "rapid", startDate: rapidForm.startDate || new Date().toISOString().split("T")[0], endDate: rapidForm.endDate || undefined });
     setRapidOpen(false);
     setRapidForm({ name: "", startDate: "", endDate: "" });
   }
