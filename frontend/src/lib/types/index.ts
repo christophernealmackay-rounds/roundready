@@ -115,9 +115,19 @@ export interface CompletedRound {
   answers: RoundAnswer[];
 }
 
+export interface IssueNotification {
+  id: string;
+  issueId: string;
+  notifiedUserId: string;
+  notifiedUserName?: string;
+  notifiedAt: string;
+  channel: string;
+}
+
 export interface Issue {
   id: string;
   roundId?: string;
+  questionId?: string;
   residentId: string;
   residentName: string;
   room: string;
@@ -131,5 +141,17 @@ export interface Issue {
   createdAt: string;
   resolvedAt?: string;
   resolvedBy?: string;
+  resolvedByName?: string;
   resolutionNotes?: string;
+  notifications?: IssueNotification[];
+}
+
+export type ResidentGroupType = 'wing' | 'cart' | 'custom';
+
+export interface ResidentGroup {
+  id: string;
+  name: string;
+  type: ResidentGroupType;
+  facilityId?: string;
+  memberIds: string[];
 }
