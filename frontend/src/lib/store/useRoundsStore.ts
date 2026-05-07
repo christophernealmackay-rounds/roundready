@@ -7,13 +7,19 @@ import type {
   TemplateSection,
 } from '../types';
 import {
+  addQuestionToSection,
   createQuestion,
   createRoundTemplate,
+  createTemplateSection,
   deleteQuestion,
+  deleteRoundTemplate,
+  deleteTemplateSection,
   listQuestions,
   listRoundTemplates,
   listRounds,
+  removeQuestionFromSection,
   submitRound,
+  updateRoundTemplate,
 } from '../api';
 import { useIssuesStore } from './useIssuesStore';
 
@@ -28,29 +34,47 @@ interface RoundsState {
   }) => void;
   refresh: () => Promise<void>;
   addTemplate: (
-    t: Omit<RoundTemplate, 'id' | 'sections' | 'active'>
+    t: Omit<RoundTemplate, 'id' | 'sections' | 'active' | 'archivedAt'>
   ) => Promise<RoundTemplate>;
-  archiveTemplate: (id: string) => void;
+  archiveTemplate: (id: string) => Promise<RoundTemplate>;
+  deleteTemplate: (id: string) => Promise<void>;
   addSection: (
     templateId: string,
-    section: Omit<TemplateSection, 'id'>
-  ) => void;
-  removeSection: (templateId: string, sectionId: string) => void;
+    section: Omit<TemplateSection, 'id' | 'questions'>
+  ) => Promise<TemplateSection>;
+  removeSection: (templateId: string, sectionId: string) => Promise<void>;
   addQuestion: (
     templateId: string,
     sectionId: string,
-    q: TemplateQuestion
-  ) => void;
+    questionId: string
+  ) => Promise<TemplateQuestion>;
   removeQuestion: (
     templateId: string,
     sectionId: string,
-    questionId: string
-  ) => void;
+    templateQuestionId: string
+  ) => Promise<void>;
   addRepositoryQuestion: (q: Omit<Question, 'id'>) => Promise<Question>;
   removeRepositoryQuestion: (id: string) => Promise<void>;
   completeRound: (
     round: Omit<CompletedRound, 'id'>
   ) => Promise<CompletedRound>;
+}
+
+function replaceTemplate(
+  templates: RoundTemplate[],
+  updated: RoundTemplate
+): RoundTemplate[] {
+  return templates.map((t) => (t.id === updated.id ? updated : t));
+}
+
+function patchSection(
+  templates: RoundTemplate[],
+  templateId: string,
+  patcher: (sections: TemplateSection[]) => TemplateSection[]
+): RoundTemplate[] {
+  return templates.map((t) =>
+    t.id === templateId ? { ...t, sections: patcher(t.sections) } : t
+  );
 }
 
 export const useRoundsStore = create<RoundsState>((set) => ({
@@ -81,75 +105,87 @@ export const useRoundsStore = create<RoundsState>((set) => ({
     return created;
   },
 
-  // Template-section/question mutations are local-only until Phase 8
-  // adds the backend endpoints for managing template structure.
-  archiveTemplate: (id) =>
+  archiveTemplate: async (id) => {
+    const updated = await updateRoundTemplate(id, {
+      active: false,
+      archivedAt: new Date().toISOString(),
+    });
+    set((s) => ({ templates: replaceTemplate(s.templates, updated) }));
+    return updated;
+  },
+
+  deleteTemplate: async (id) => {
+    await deleteRoundTemplate(id);
+    set((s) => ({ templates: s.templates.filter((t) => t.id !== id) }));
+  },
+
+  addSection: async (templateId, section) => {
+    const created = await createTemplateSection(templateId, {
+      title: section.title,
+      qapiId: section.qapiId,
+      qapiItemId: section.qapiItemId,
+    });
+    const newSection: TemplateSection = { ...created, questions: [] };
     set((s) => ({
-      templates: s.templates.map((t) =>
-        t.id === id
-          ? { ...t, active: false, archivedAt: new Date().toISOString() }
-          : t
+      templates: patchSection(s.templates, templateId, (sections) => [
+        ...sections,
+        newSection,
+      ]),
+    }));
+    return newSection;
+  },
+
+  removeSection: async (templateId, sectionId) => {
+    await deleteTemplateSection(sectionId);
+    set((s) => ({
+      templates: patchSection(s.templates, templateId, (sections) =>
+        sections.filter((sec) => sec.id !== sectionId)
       ),
-    })),
+    }));
+  },
 
-  addSection: (templateId, section) =>
+  addQuestion: async (templateId, sectionId, questionId) => {
+    const created = await addQuestionToSection(sectionId, { questionId });
+    // The API returns text + question_id but not issueOn / notifyDepartmentId.
+    // Look those up from the in-memory question to keep the UI consistent.
+    const stored = useRoundsStore.getState().questions.find((q) => q.id === questionId);
+    const tq: TemplateQuestion = {
+      id: created.id,
+      questionId: created.questionId,
+      text: created.text,
+      issueOn: stored?.issueOn ?? 'either',
+      notifyDepartmentId: stored?.notifyDepartmentId ?? '',
+      order: created.order,
+    };
     set((s) => ({
-      templates: s.templates.map((t) =>
-        t.id === templateId
-          ? {
-              ...t,
-              sections: [
-                ...t.sections,
-                { ...section, id: `sec-${Date.now()}` },
-              ],
-            }
-          : t
+      templates: patchSection(s.templates, templateId, (sections) =>
+        sections.map((sec) =>
+          sec.id === sectionId
+            ? { ...sec, questions: [...sec.questions, tq] }
+            : sec
+        )
       ),
-    })),
+    }));
+    return tq;
+  },
 
-  removeSection: (templateId, sectionId) =>
+  removeQuestion: async (templateId, sectionId, templateQuestionId) => {
+    await removeQuestionFromSection(templateQuestionId);
     set((s) => ({
-      templates: s.templates.map((t) =>
-        t.id === templateId
-          ? { ...t, sections: t.sections.filter((sec) => sec.id !== sectionId) }
-          : t
+      templates: patchSection(s.templates, templateId, (sections) =>
+        sections.map((sec) =>
+          sec.id === sectionId
+            ? {
+                ...sec,
+                questions: sec.questions.filter(
+                  (q) => q.id !== templateQuestionId
+                ),
+              }
+            : sec
+        )
       ),
-    })),
-
-  addQuestion: (templateId, sectionId, q) =>
-    set((s) => ({
-      templates: s.templates.map((t) => {
-        if (t.id !== templateId) return t;
-        return {
-          ...t,
-          sections: t.sections.map((sec) =>
-            sec.id === sectionId
-              ? { ...sec, questions: [...sec.questions, q] }
-              : sec
-          ),
-        };
-      }),
-    })),
-
-  removeQuestion: (templateId, sectionId, questionId) =>
-    set((s) => ({
-      templates: s.templates.map((t) => {
-        if (t.id !== templateId) return t;
-        return {
-          ...t,
-          sections: t.sections.map((sec) =>
-            sec.id === sectionId
-              ? {
-                  ...sec,
-                  questions: sec.questions.filter(
-                    (q) => q.questionId !== questionId
-                  ),
-                }
-              : sec
-          ),
-        };
-      }),
-    })),
+    }));
+  },
 
   addRepositoryQuestion: async (q) => {
     const created = await createQuestion({

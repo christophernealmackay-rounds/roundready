@@ -251,6 +251,105 @@ class TestRounds:
         for key in ("id", "template_id", "angel_id", "resident_id"):
             assert key in rounds[0]
 
+    async def test_template_crud_lifecycle(self, client: AsyncClient):
+        """Create a template, add a section + question, archive via PATCH, delete."""
+        # Pick any existing question to link.
+        questions = (await client.get("/api/v1/questions")).json()
+        question_id = questions[0]["id"]
+
+        # Create template
+        r = await client.post(
+            "/api/v1/rounds/templates",
+            json={"name": "Phase 8 test template", "type": "rapid"},
+        )
+        assert r.status_code == 201, r.text
+        template = r.json()
+        tid = template["id"]
+        assert template["active"] is True
+        assert template["sections"] == []
+
+        # Add a section
+        r = await client.post(
+            f"/api/v1/rounds/templates/{tid}/sections",
+            json={"title": "General", "order": 1},
+        )
+        assert r.status_code == 201, r.text
+        section = r.json()
+        sid = section["id"]
+        assert section["title"] == "General"
+
+        # Add a question to the section
+        r = await client.post(
+            f"/api/v1/rounds/sections/{sid}/questions",
+            json={"question_id": question_id, "order": 0},
+        )
+        assert r.status_code == 201, r.text
+        tq = r.json()
+        tq_id = tq["id"]
+        assert tq["question_id"] == question_id
+
+        # PATCH the section title
+        r = await client.patch(
+            f"/api/v1/rounds/sections/{sid}",
+            json={"title": "General — renamed"},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["title"] == "General — renamed"
+
+        # PATCH the template (archive it)
+        r = await client.patch(
+            f"/api/v1/rounds/templates/{tid}",
+            json={"active": False, "archived_at": "2026-05-07T12:00:00Z"},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["active"] is False
+        assert r.json()["archived_at"] is not None
+
+        # Unlink the template question
+        r = await client.delete(f"/api/v1/rounds/template-questions/{tq_id}")
+        assert r.status_code == 204
+
+        # Delete the section
+        r = await client.delete(f"/api/v1/rounds/sections/{sid}")
+        assert r.status_code == 204
+
+        # Delete the template
+        r = await client.delete(f"/api/v1/rounds/templates/{tid}")
+        assert r.status_code == 204
+
+        # Confirm gone (404 on subsequent delete)
+        r = await client.delete(f"/api/v1/rounds/templates/{tid}")
+        assert r.status_code == 404
+
+    async def test_template_delete_cascades(self, client: AsyncClient):
+        """Deleting a template should cascade to its sections and template_questions."""
+        questions = (await client.get("/api/v1/questions")).json()
+        qid = questions[0]["id"]
+
+        t = (await client.post(
+            "/api/v1/rounds/templates",
+            json={"name": "Cascade test", "type": "rapid"},
+        )).json()
+        s = (await client.post(
+            f"/api/v1/rounds/templates/{t['id']}/sections",
+            json={"title": "S", "order": 0},
+        )).json()
+        await client.post(
+            f"/api/v1/rounds/sections/{s['id']}/questions",
+            json={"question_id": qid, "order": 0},
+        )
+
+        # Delete template — cascade
+        r = await client.delete(f"/api/v1/rounds/templates/{t['id']}")
+        assert r.status_code == 204
+
+        # Section should be gone now (404 on update)
+        r = await client.patch(
+            f"/api/v1/rounds/sections/{s['id']}",
+            json={"title": "x"},
+        )
+        assert r.status_code == 404
+
 
 # ---------------------------------------------------------------------------
 # Reports

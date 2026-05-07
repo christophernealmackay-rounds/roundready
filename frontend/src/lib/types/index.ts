@@ -80,6 +80,9 @@ export interface Question {
 }
 
 export interface TemplateQuestion {
+  /** Primary key of the template_questions row (the link). Optional only
+   *  for newly-built sections that haven't been persisted yet. */
+  id?: string;
   questionId: string;
   text: string;
   issueOn: 'yes' | 'no' | 'either';

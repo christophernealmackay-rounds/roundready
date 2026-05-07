@@ -383,6 +383,99 @@ export async function createRoundTemplate(input: {
   return mapRoundTemplate(unwrap(res));
 }
 
+export async function updateRoundTemplate(
+  templateId: string,
+  input: Partial<{
+    name: string;
+    active: boolean;
+    startDate: string | null;
+    endDate: string | null;
+    archivedAt: string | null;
+  }>
+): Promise<RoundTemplate> {
+  const res = await api.PATCH('/api/v1/rounds/templates/{template_id}', {
+    params: { path: { template_id: templateId } },
+    body: {
+      name: input.name,
+      active: input.active,
+      start_date: input.startDate,
+      end_date: input.endDate,
+      archived_at: input.archivedAt,
+    },
+  });
+  return mapRoundTemplate(unwrap(res));
+}
+
+export async function deleteRoundTemplate(templateId: string): Promise<void> {
+  const res = await api.DELETE('/api/v1/rounds/templates/{template_id}', {
+    params: { path: { template_id: templateId } },
+  });
+  unwrap(res);
+}
+
+export async function createTemplateSection(
+  templateId: string,
+  input: { title: string; qapiId?: string; qapiItemId?: string; order?: number }
+): Promise<{ id: string; title: string; qapiId?: string; qapiItemId?: string; order: number }> {
+  const res = await api.POST(
+    '/api/v1/rounds/templates/{template_id}/sections',
+    {
+      params: { path: { template_id: templateId } },
+      body: {
+        title: input.title,
+        qapi_id: input.qapiId ?? null,
+        qapi_item_id: input.qapiItemId ?? null,
+        order: input.order ?? 0,
+      },
+    }
+  );
+  const s = unwrap(res);
+  return {
+    id: s.id,
+    title: s.title,
+    qapiId: s.qapi_id ?? undefined,
+    qapiItemId: s.qapi_item_id ?? undefined,
+    order: s.order,
+  };
+}
+
+export async function deleteTemplateSection(sectionId: string): Promise<void> {
+  const res = await api.DELETE('/api/v1/rounds/sections/{section_id}', {
+    params: { path: { section_id: sectionId } },
+  });
+  unwrap(res);
+}
+
+export async function addQuestionToSection(
+  sectionId: string,
+  input: { questionId: string; order?: number }
+): Promise<{ id: string; questionId: string; text: string; order: number }> {
+  const res = await api.POST(
+    '/api/v1/rounds/sections/{section_id}/questions',
+    {
+      params: { path: { section_id: sectionId } },
+      body: { question_id: input.questionId, order: input.order ?? 0 },
+    }
+  );
+  const tq = unwrap(res);
+  return {
+    id: tq.id,
+    questionId: tq.question_id,
+    text: tq.text,
+    order: tq.order,
+  };
+}
+
+export async function removeQuestionFromSection(
+  templateQuestionId: string
+): Promise<void> {
+  const res = await api.DELETE(
+    '/api/v1/rounds/template-questions/{template_question_id}',
+    { params: { path: { template_question_id: templateQuestionId } } }
+  );
+  unwrap(res);
+}
+
 export async function listRounds(): Promise<CompletedRound[]> {
   const res = await api.GET('/api/v1/rounds');
   return unwrap(res).map(mapRound);

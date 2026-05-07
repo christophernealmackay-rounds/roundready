@@ -166,7 +166,7 @@ export default function RoundsPage() {
                             <span style={{ flex: 1, fontSize: 12, color: "var(--ink-soft)" }}>{q.text}</span>
                             <span style={{ fontSize: 10, fontWeight: 600, padding: "1px 6px", borderRadius: 999, background: "var(--red-tint)", color: "var(--red)" }}>Issue if {q.issueOn}</span>
                             <span style={{ fontSize: 10, color: "var(--muted)" }}>→ {departments.find((d) => d.id === q.notifyDepartmentId)?.name}</span>
-                            <button onClick={() => removeQuestion(activeAngelTemplate.id, sec.id, q.questionId)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 2 }}><X size={11} /></button>
+                            <button onClick={() => q.id && removeQuestion(activeAngelTemplate.id, sec.id, q.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 2 }}><X size={11} /></button>
                           </div>
                         ))}
                       </div>

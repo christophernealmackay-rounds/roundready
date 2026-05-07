@@ -12,6 +12,12 @@ from app.db.client import get_db, DB
 from app.schemas.round import (
     RoundTemplateOut,
     RoundTemplateCreate,
+    RoundTemplateUpdate,
+    TemplateSectionCreate,
+    TemplateSectionUpdate,
+    TemplateQuestionCreate,
+    TemplateSectionOut,
+    TemplateQuestionOut,
     RoundOut,
     RoundSubmit,
 )
@@ -72,6 +78,173 @@ async def create_template(
     }
     t = await db.insert("round_templates", data)
     return await _build_template_out(t, db)
+
+
+@router.patch("/templates/{template_id}", response_model=RoundTemplateOut)
+async def update_template(
+    template_id: uuid.UUID,
+    body: RoundTemplateUpdate,
+    client: httpx.AsyncClient = Depends(get_db),
+):
+    db = DB(client)
+    rows = await db.select("round_templates", {"id": f"eq.{template_id}"})
+    if not rows:
+        raise HTTPException(404, "Template not found")
+    payload: dict = {}
+    if body.name is not None:
+        payload["name"] = body.name
+    if body.active is not None:
+        payload["active"] = body.active
+    if body.start_date is not None:
+        payload["start_date"] = body.start_date.isoformat()
+    if body.end_date is not None:
+        payload["end_date"] = body.end_date.isoformat()
+    if body.archived_at is not None:
+        payload["archived_at"] = body.archived_at.isoformat()
+    if payload:
+        t = await db.update("round_templates", {"id": str(template_id)}, payload)
+    else:
+        t = rows[0]
+    return await _build_template_out(t, db)
+
+
+@router.delete("/templates/{template_id}", status_code=204)
+async def delete_template(template_id: uuid.UUID, client: httpx.AsyncClient = Depends(get_db)):
+    db = DB(client)
+    rows = await db.select("round_templates", {"id": f"eq.{template_id}"})
+    if not rows:
+        raise HTTPException(404, "Template not found")
+    # template_sections + template_questions cascade via FK ON DELETE CASCADE.
+    await db.delete("round_templates", {"id": str(template_id)})
+    return None
+
+
+# ── Sections ───────────────────────────────────────────────────────────────
+
+@router.post("/templates/{template_id}/sections", response_model=TemplateSectionOut, status_code=201)
+async def create_section(
+    template_id: uuid.UUID,
+    body: TemplateSectionCreate,
+    client: httpx.AsyncClient = Depends(get_db),
+):
+    db = DB(client)
+    rows = await db.select("round_templates", {"id": f"eq.{template_id}"})
+    if not rows:
+        raise HTTPException(404, "Template not found")
+    section = await db.insert("template_sections", {
+        "id": str(uuid.uuid4()),
+        "template_id": str(template_id),
+        "title": body.title,
+        "qapi_id": str(body.qapi_id) if body.qapi_id else None,
+        "qapi_item_id": str(body.qapi_item_id) if body.qapi_item_id else None,
+        "order": body.order,
+    })
+    return {**section, "questions": []}
+
+
+@router.patch("/sections/{section_id}", response_model=TemplateSectionOut)
+async def update_section(
+    section_id: uuid.UUID,
+    body: TemplateSectionUpdate,
+    client: httpx.AsyncClient = Depends(get_db),
+):
+    db = DB(client)
+    rows = await db.select("template_sections", {"id": f"eq.{section_id}"})
+    if not rows:
+        raise HTTPException(404, "Section not found")
+    payload: dict = {}
+    if body.title is not None:
+        payload["title"] = body.title
+    if body.qapi_id is not None:
+        payload["qapi_id"] = str(body.qapi_id)
+    if body.qapi_item_id is not None:
+        payload["qapi_item_id"] = str(body.qapi_item_id)
+    if body.order is not None:
+        payload["order"] = body.order
+    if payload:
+        section = await db.update("template_sections", {"id": str(section_id)}, payload)
+    else:
+        section = rows[0]
+    # Re-pull questions for the response.
+    tqs = await db.select("template_questions", {
+        "section_id": f"eq.{section_id}",
+        "order": "order.asc",
+    })
+    questions = []
+    for tq in tqs:
+        qrows = await db.select("questions", {"id": f"eq.{tq['question_id']}"})
+        if qrows:
+            q = qrows[0]
+            questions.append({
+                "id": tq["id"],
+                "question_id": q["id"],
+                "text": q["text"],
+                "section": q.get("section", ""),
+                "issue_on": q["issue_on"],
+                "notify_department_id": q.get("notify_department_id"),
+                "order": tq["order"],
+            })
+    return {**section, "questions": questions}
+
+
+@router.delete("/sections/{section_id}", status_code=204)
+async def delete_section(section_id: uuid.UUID, client: httpx.AsyncClient = Depends(get_db)):
+    db = DB(client)
+    rows = await db.select("template_sections", {"id": f"eq.{section_id}"})
+    if not rows:
+        raise HTTPException(404, "Section not found")
+    await db.delete("template_sections", {"id": str(section_id)})
+    return None
+
+
+# ── Section ⇆ Question links ───────────────────────────────────────────────
+
+@router.post(
+    "/sections/{section_id}/questions",
+    response_model=TemplateQuestionOut,
+    status_code=201,
+)
+async def add_question_to_section(
+    section_id: uuid.UUID,
+    body: TemplateQuestionCreate,
+    client: httpx.AsyncClient = Depends(get_db),
+):
+    db = DB(client)
+    s_rows = await db.select("template_sections", {"id": f"eq.{section_id}"})
+    if not s_rows:
+        raise HTTPException(404, "Section not found")
+    q_rows = await db.select("questions", {"id": f"eq.{body.question_id}"})
+    if not q_rows:
+        raise HTTPException(404, "Question not found")
+    tq = await db.insert("template_questions", {
+        "id": str(uuid.uuid4()),
+        "section_id": str(section_id),
+        "question_id": str(body.question_id),
+        "order": body.order,
+    })
+    q = q_rows[0]
+    return {
+        "id": tq["id"],
+        "question_id": q["id"],
+        "text": q["text"],
+        "section": q.get("section", ""),
+        "issue_on": q["issue_on"],
+        "notify_department_id": q.get("notify_department_id"),
+        "order": tq["order"],
+    }
+
+
+@router.delete("/template-questions/{template_question_id}", status_code=204)
+async def remove_question_from_section(
+    template_question_id: uuid.UUID,
+    client: httpx.AsyncClient = Depends(get_db),
+):
+    db = DB(client)
+    rows = await db.select("template_questions", {"id": f"eq.{template_question_id}"})
+    if not rows:
+        raise HTTPException(404, "Template question not found")
+    await db.delete("template_questions", {"id": str(template_question_id)})
+    return None
 
 
 @router.get("", response_model=list[RoundOut])

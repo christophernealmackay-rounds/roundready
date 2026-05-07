@@ -106,6 +106,7 @@ export function mapQuestion(q: S['QuestionOut']): Question {
 
 function mapTemplateQuestion(tq: S['TemplateQuestionOut']): TemplateQuestion {
   return {
+    id: tq.id,
     questionId: tq.question_id,
     text: tq.text,
     issueOn: tq.issue_on as TemplateQuestion['issueOn'],

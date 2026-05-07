@@ -49,6 +49,33 @@ class RoundTemplateCreate(BaseModel):
     end_date: datetime.date | None = None
 
 
+class RoundTemplateUpdate(BaseModel):
+    name: str | None = None
+    active: bool | None = None
+    start_date: datetime.date | None = None
+    end_date: datetime.date | None = None
+    archived_at: datetime.datetime | None = None
+
+
+class TemplateSectionCreate(BaseModel):
+    title: str
+    qapi_id: UUID | None = None
+    qapi_item_id: UUID | None = None
+    order: int = 0
+
+
+class TemplateSectionUpdate(BaseModel):
+    title: str | None = None
+    qapi_id: UUID | None = None
+    qapi_item_id: UUID | None = None
+    order: int | None = None
+
+
+class TemplateQuestionCreate(BaseModel):
+    question_id: UUID
+    order: int = 0
+
+
 class RoundAnswerSubmit(BaseModel):
     question_id: UUID
     answer: bool | None
