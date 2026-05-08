@@ -41,12 +41,21 @@ export const useAngelsStore = create<AngelsState>((set) => ({
   },
 
   returnToDuty: async (id) => {
-    const updated = await setAngelAbsent(id, false);
-    set((s) => ({ angels: s.angels.map((a) => (a.id === id ? updated : a)) }));
+    await setAngelAbsent(id, false);
+    // Backend restores residents whose original_angel_id == this angel.
+    // Refetch both stores so resident assignments AND every angel's count
+    // (the giver loses, the returner gains) reflect the swap.
+    await Promise.all([
+      useResidentsStore.getState().refresh(),
+      (async () => set({ angels: await listAngels() }))(),
+    ]);
   },
 
   redistribute: async (absentAngelId) => {
     await redistributeAngel(absentAngelId);
-    await useResidentsStore.getState().refresh();
+    await Promise.all([
+      useResidentsStore.getState().refresh(),
+      (async () => set({ angels: await listAngels() }))(),
+    ]);
   },
 }));

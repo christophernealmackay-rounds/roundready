@@ -106,7 +106,8 @@ export async function updateUser(
       name: input.name,
       email: input.email,
       role: input.role,
-      department_id: input.departmentId,
+      // Coerce empty-string departmentId to null so the UUID validator passes.
+      department_id: input.departmentId || null,
       active: input.active,
       notification_prefs: input.notificationPrefs as { [k: string]: unknown } | null,
     },

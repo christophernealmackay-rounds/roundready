@@ -71,10 +71,30 @@ async def set_absent(
     angel = await db.update("angels", {"id": str(angel_id)}, update_data)
 
     if body.absent:
-        # Unassign all residents from this angel.
+        # Unassign all residents from this angel, but remember where they came
+        # from so that returning to duty can restore the assignment — even if
+        # redistribution moves them to another angel in the meantime.
         residents = await db.select("residents", {"angel_id": f"eq.{angel_id}"})
         for r in residents:
-            await db.update("residents", {"id": str(r["id"])}, {"angel_id": None})
+            patch: dict = {"angel_id": None}
+            # Don't overwrite an existing original_angel_id — that would happen
+            # if a resident was redistributed onto a now-absent angel.
+            if r.get("original_angel_id") is None:
+                patch["original_angel_id"] = str(angel_id)
+            await db.update("residents", {"id": str(r["id"])}, patch)
+    else:
+        # Returning to duty: pull back every resident whose original angel was
+        # this one, regardless of who they were redistributed to.
+        to_restore = await db.select(
+            "residents",
+            {"original_angel_id": f"eq.{angel_id}", "status": "eq.active"},
+        )
+        for r in to_restore:
+            await db.update(
+                "residents",
+                {"id": str(r["id"])},
+                {"angel_id": str(angel_id), "original_angel_id": None},
+            )
 
     return await _build_angel_out(angel, db)
 

@@ -54,19 +54,25 @@ async def get_report(
         template_ids = {s["template_id"] for s in sections}
         rounds = [r for r in rounds if r["template_id"] in template_ids]
 
-    # Flag counts via round_answers
+    # Flag counts via round_answers — one bulk query, not one per round.
+    # round_answers can exceed PostgREST's 1000-row cap, so paginate.
+    round_ids = {r["id"] for r in rounds}
     total_flags = 0
     flag_by_angel: dict[str, int] = defaultdict(int)
     flag_by_round: dict[str, int] = defaultdict(int)
-    for r in rounds:
-        flags = await db.select("round_answers", {
-            "round_id": f"eq.{r['id']}",
-            "issue_flagged": "eq.true",
-        })
-        n = len(flags)
-        total_flags += n
-        flag_by_angel[r["angel_id"]] += n
-        flag_by_round[r["id"]] = n
+    if round_ids:
+        flagged_answers = await db.select_all(
+            "round_answers",
+            {"select": "round_id", "issue_flagged": "eq.true"},
+        )
+        round_to_angel = {r["id"]: r["angel_id"] for r in rounds}
+        for a in flagged_answers:
+            rid = a["round_id"]
+            if rid not in round_ids:
+                continue
+            total_flags += 1
+            flag_by_round[rid] += 1
+            flag_by_angel[round_to_angel[rid]] += 1
 
     # Issues in range
     issue_params: dict = {}
@@ -88,20 +94,26 @@ async def get_report(
     for r in rounds:
         rounds_by_angel[r["angel_id"]] += 1
 
-    angel_stats: list[AngelStat] = []
-    for aid, count in rounds_by_angel.items():
-        arows = await db.select("angels", {"id": f"eq.{aid}"})
-        name = ""
-        if arows:
-            urows = await db.select("users", {"id": f"eq.{arows[0]['user_id']}"})
-            if urows:
-                name = urows[0]["name"]
-        angel_stats.append(AngelStat(
+    # Angel name lookup: bulk-fetch once, not once per angel.
+    all_angels = await db.select("angels", {"select": "id,user_id"})
+    user_ids = {a["user_id"] for a in all_angels}
+    user_rows = (
+        await db.select("users", {"select": "id,name"}) if user_ids else []
+    )
+    user_name_by_id = {u["id"]: u["name"] for u in user_rows}
+    angel_name_by_id = {
+        a["id"]: user_name_by_id.get(a["user_id"], "") for a in all_angels
+    }
+
+    angel_stats: list[AngelStat] = [
+        AngelStat(
             angel_id=aid,
-            angel_name=name,
+            angel_name=angel_name_by_id.get(aid, ""),
             round_count=count,
             flags_raised=flag_by_angel.get(aid, 0),
-        ))
+        )
+        for aid, count in rounds_by_angel.items()
+    ]
     angel_stats.sort(key=lambda s: s.angel_name)
 
     # Daily stats

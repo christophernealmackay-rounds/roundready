@@ -101,10 +101,37 @@ async def resolve_issue(
     body: IssueResolve,
     client: httpx.AsyncClient = Depends(get_db),
 ):
+    """Mark an issue resolved.
+
+    Mirrors the frontend `canResolve` guard so the API enforces it too:
+      - admin and charge_nurse can always resolve
+      - an angel can resolve only issues in their own department
+    The `resolved_by` user must exist and be active. Without this check,
+    the UI could be bypassed and an arbitrary user attributed.
+    """
     db = DB(client)
     rows = await db.select("issues", {"id": f"eq.{issue_id}"})
     if not rows:
         raise HTTPException(404, "Issue not found")
+    issue_row = rows[0]
+
+    user_rows = await db.select("users", {"id": f"eq.{body.resolved_by}"})
+    if not user_rows:
+        raise HTTPException(422, "resolved_by user not found")
+    resolver = user_rows[0]
+    if not resolver.get("active", True):
+        raise HTTPException(403, "resolved_by user is inactive")
+    role = resolver.get("role")
+    if role in ("admin", "charge_nurse"):
+        pass
+    elif role == "angel" and resolver.get("department_id") == issue_row.get("department_id"):
+        pass
+    else:
+        raise HTTPException(
+            403,
+            "resolver must be admin, charge_nurse, or an angel in the issue's department",
+        )
+
     issue = await db.update("issues", {"id": str(issue_id)}, {
         "status": "resolved",
         "resolved_at": datetime.now(timezone.utc).isoformat(),

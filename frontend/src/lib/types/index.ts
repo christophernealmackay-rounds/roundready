@@ -111,7 +111,9 @@ export interface RoundTemplate {
 
 export interface RoundAnswer {
   questionId: string;
-  answer: boolean;
+  // Null when the angel skipped the question (rare, but the API contract
+  // allows it). UI code that needs a boolean should coerce explicitly.
+  answer: boolean | null;
   issueFlagged: boolean;
 }
 

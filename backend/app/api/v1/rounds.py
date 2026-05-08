@@ -57,8 +57,33 @@ async def _build_template_out(t: dict, db: DB) -> dict:
 
 @router.get("/templates", response_model=list[RoundTemplateOut])
 async def list_templates(client: httpx.AsyncClient = Depends(get_db)):
+    """List all templates. Phase 4.2 contract: any active RapidRound whose
+    end_date has passed gets auto-archived on retrieval, so admins don't
+    have to babysit a "Stop" button when the survey window naturally ends.
+    """
     db = DB(client)
     templates = await db.select("round_templates", {"order": "created_at.desc"})
+
+    # Auto-archive expired rapid rounds before returning the list.
+    today_iso = datetime.now(timezone.utc).date().isoformat()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for t in templates:
+        if (
+            t.get("type") == "rapid"
+            and t.get("active")
+            and not t.get("archived_at")
+            and t.get("end_date")
+            and t["end_date"] < today_iso
+        ):
+            updated = await db.update(
+                "round_templates",
+                {"id": t["id"]},
+                {"active": False, "archived_at": now_iso},
+            )
+            # Reflect the change in the in-memory copy so the response is
+            # consistent without a re-fetch.
+            t.update(updated)
+
     return [await _build_template_out(t, db) for t in templates]
 
 
@@ -291,14 +316,24 @@ async def list_rounds(
         t["id"]: t for t in await db.select("round_templates", {"select": "id,name"})
     }
 
-    # Pull all flagged answers for the rounds we care about in a single query.
-    flagged = await db.select(
+    # Pull every answer for the rounds we care about — the dashboard's QAPI
+    # compliance widget needs answer-level granularity, and an N+1 per round
+    # was crippling. Use select_all to page past PostgREST's 1000-row cap.
+    all_answers = await db.select_all(
         "round_answers",
-        {"select": "round_id", "issue_flagged": "eq.true"},
+        {"select": "round_id,question_id,answer,issue_flagged"},
     )
+    answers_by_round: dict[str, list[dict]] = {}
     flag_count: dict[str, int] = {}
-    for f in flagged:
-        flag_count[f["round_id"]] = flag_count.get(f["round_id"], 0) + 1
+    for a in all_answers:
+        rid = a["round_id"]
+        answers_by_round.setdefault(rid, []).append({
+            "question_id": a["question_id"],
+            "answer": a.get("answer"),
+            "issue_flagged": bool(a.get("issue_flagged")),
+        })
+        if a.get("issue_flagged"):
+            flag_count[rid] = flag_count.get(rid, 0) + 1
 
     out = []
     for r in rounds:
@@ -312,6 +347,7 @@ async def list_rounds(
         if (template := templates.get(r["template_id"])):
             item["template_name"] = template["name"]
         item["flags_raised"] = flag_count.get(r["id"], 0)
+        item["answers"] = answers_by_round.get(r["id"], [])
         out.append(item)
     return out
 

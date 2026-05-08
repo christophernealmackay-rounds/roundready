@@ -32,3 +32,12 @@ Thumbs.db
 
 # Claude Code
 .claude/worktrees/
+.claude/ralph-loop.local.md
+.claude/scheduled_tasks.lock
+
+# Playwright MCP transient artifacts
+.playwright-mcp/
+
+# Ad-hoc screenshots from manual / Playwright walkthroughs
+*.png
+!docs/**/*.png

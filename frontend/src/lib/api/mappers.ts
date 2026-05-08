@@ -139,13 +139,27 @@ export function mapRoundTemplate(t: S['RoundTemplateOut']): RoundTemplate {
 }
 
 export function mapRound(r: S['RoundOut']): CompletedRound {
+  // The list endpoint now returns answers inline so the dashboard can
+  // compute QAPI compliance without an N+1 fetch. Older callers that don't
+  // include answers (legacy schema) fall through to an empty array.
+  const rawAnswers = (r as unknown as { answers?: Array<{
+    question_id: string;
+    answer: boolean | null;
+    issue_flagged: boolean;
+  }> }).answers;
   return {
     id: r.id,
     templateId: r.template_id,
     angelId: r.angel_id,
     residentId: r.resident_id,
     completedAt: r.completed_at ?? '',
-    answers: [],
+    answers: rawAnswers
+      ? rawAnswers.map((a) => ({
+          questionId: a.question_id,
+          answer: a.answer ?? null,
+          issueFlagged: !!a.issue_flagged,
+        }))
+      : [],
   };
 }
 

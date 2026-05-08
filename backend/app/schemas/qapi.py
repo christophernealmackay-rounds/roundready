@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel
+
+# Mirror schema CHECK constraints so bad input fails 422 instead of leaking
+# Postgres CheckViolations through as 500s.
+QapiStatus = Literal["active", "archived"]
+MonitoringType = Literal["rounds", "completion", "cadence"]
 
 
 class QapiItemOut(BaseModel):
@@ -26,7 +32,7 @@ class QapiItemCreate(BaseModel):
     title: str
     root_cause: str = ""
     systemic_change: str = ""
-    monitoring_type: str = "rounds"
+    monitoring_type: MonitoringType = "rounds"
     monitoring_detail: str = ""
     responsible: str = ""
     start_date: datetime.date | None = None
@@ -38,7 +44,7 @@ class QapiItemUpdate(BaseModel):
     title: str | None = None
     root_cause: str | None = None
     systemic_change: str | None = None
-    monitoring_type: str | None = None
+    monitoring_type: MonitoringType | None = None
     monitoring_detail: str | None = None
     responsible: str | None = None
     start_date: datetime.date | None = None
@@ -65,6 +71,6 @@ class QapiCreate(BaseModel):
 
 class QapiUpdate(BaseModel):
     title: str | None = None
-    status: str | None = None
+    status: QapiStatus | None = None
     issues_identified: str | None = None
     date_identified: datetime.date | None = None

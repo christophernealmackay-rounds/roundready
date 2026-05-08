@@ -13,7 +13,10 @@ import {
   mapIssue,
   mapResident,
   mapResidentGroup,
+  mapRound,
+  mapUser,
 } from '@/lib/api/mappers';
+import { todayIsoDate, todayEndOfDay, todayStartOfDay, formatDate } from '@/lib/dates';
 import type { CompletedRound } from '@/lib/types';
 
 const TODAY_APP = '2026-05-06';
@@ -86,6 +89,85 @@ describe('Reports date range filtering', () => {
     });
     expect(monthly.length).toBeGreaterThan(0);
     expect(monthly.every((r) => r.completedAt.startsWith('2026-05'))).toBe(true);
+  });
+});
+
+// ─── Demo "today" date util ──────────────────────────────────────────────────
+
+describe('demo today date util', () => {
+  it('todayIsoDate returns YYYY-MM-DD matching the host clock', () => {
+    const iso = todayIsoDate();
+    expect(iso).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const now = new Date();
+    expect(iso).toBe(
+      `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
+    );
+  });
+
+  it('start/end of day frame the full calendar day', () => {
+    const start = todayStartOfDay();
+    const end = todayEndOfDay();
+    expect(start.getHours()).toBe(0);
+    expect(end.getHours()).toBe(23);
+    expect(end.getTime() - start.getTime()).toBeGreaterThan(23 * 3600 * 1000);
+  });
+
+  it('formatDate parses YYYY-MM-DD as local, no UTC drift', () => {
+    // Was: new Date("2026-05-07") → UTC midnight → displayed as "May 6"
+    // in any negative-UTC locale. formatDate must keep the same calendar
+    // day no matter the host timezone.
+    expect(formatDate('2026-05-07')).toBe('May 7, 2026');
+    expect(formatDate('2026-01-01')).toBe('Jan 1, 2026');
+    expect(formatDate('2026-12-31')).toBe('Dec 31, 2026');
+  });
+
+  it('formatDate respects a full ISO datetime', () => {
+    // Full ISO strings already include offset/Z, so no parsing trick needed.
+    const out = formatDate('2026-05-07T15:30:00Z');
+    expect(out).toMatch(/2026/);
+    expect(out).toMatch(/May/);
+  });
+
+  it('formatDate returns empty string for empty input', () => {
+    expect(formatDate('')).toBe('');
+  });
+});
+
+// ─── Round answer flagging logic (mirrors AngelRoundFlow.submit) ────────────
+
+/**
+ * Replica of the inline flagging rule in AngelRoundFlow.tsx so the contract
+ * is locked in by a test instead of only living inside a component.
+ *
+ * Rules:
+ *   issue_on='no'     → flag when answer === false
+ *   issue_on='yes'    → flag when answer === true
+ *   issue_on='either' → never auto-flag (informational, manual escalation)
+ *   no answer         → never flag
+ */
+function shouldFlag(issueOn: 'yes' | 'no' | 'either', value: boolean | undefined): boolean {
+  if (value === undefined) return false;
+  if (issueOn === 'either') return false;
+  return (value && issueOn === 'yes') || (!value && issueOn === 'no');
+}
+
+describe('round answer flagging', () => {
+  it("issue_on='no' flags only on No", () => {
+    expect(shouldFlag('no', false)).toBe(true);
+    expect(shouldFlag('no', true)).toBe(false);
+  });
+  it("issue_on='yes' flags only on Yes", () => {
+    expect(shouldFlag('yes', true)).toBe(true);
+    expect(shouldFlag('yes', false)).toBe(false);
+  });
+  it("issue_on='either' is informational and never flags", () => {
+    expect(shouldFlag('either', true)).toBe(false);
+    expect(shouldFlag('either', false)).toBe(false);
+  });
+  it('a skipped question never flags regardless of issue_on', () => {
+    expect(shouldFlag('no', undefined)).toBe(false);
+    expect(shouldFlag('yes', undefined)).toBe(false);
+    expect(shouldFlag('either', undefined)).toBe(false);
   });
 });
 
@@ -183,6 +265,70 @@ describe('mappers', () => {
     expect(i.notifications?.[0].notifiedUserName).toBe('Patricia Nguyen');
     expect(i.status).toBe('open');
     expect(i.questionText).toBe('Skin intact?');
+  });
+
+  it('maps a round and includes inline answers from the API', () => {
+    // Regression: the dashboard QAPI compliance card was silently broken
+    // because mapRound dropped the answers array even after the backend
+    // started returning it. Lock in that the mapper preserves answers.
+    const r = mapRound({
+      id: 'rnd-1',
+      template_id: 'tmpl-1',
+      angel_id: 'ang-1',
+      resident_id: 'res-1',
+      completed_at: '2026-05-07T10:00:00Z',
+      answers: [
+        { question_id: 'q1', answer: true, issue_flagged: false },
+        { question_id: 'q2', answer: false, issue_flagged: true },
+        { question_id: 'q3', answer: null, issue_flagged: false },
+      ],
+    } as never);
+    expect(r.answers).toHaveLength(3);
+    expect(r.answers[0]).toEqual({ questionId: 'q1', answer: true, issueFlagged: false });
+    expect(r.answers[1].issueFlagged).toBe(true);
+    expect(r.answers[2].answer).toBeNull();
+  });
+
+  it('mapRound falls back to empty answers when API omits them', () => {
+    // Older callers may still send a response without the answers field;
+    // the mapper should default to [] not crash.
+    const r = mapRound({
+      id: 'rnd-2',
+      template_id: 'tmpl-2',
+      angel_id: 'ang-2',
+      resident_id: 'res-2',
+      completed_at: '2026-05-07T10:00:00Z',
+    } as never);
+    expect(r.answers).toEqual([]);
+  });
+
+  it('maps a user including notification prefs and role', () => {
+    const u = mapUser({
+      id: 'u1',
+      name: 'Mary Smith',
+      email: 'msmith@roundready.demo',
+      role: 'admin',
+      department_id: 'dept-admin',
+      notification_prefs: { issues: true, reminders: false, summaries: true },
+      active: true,
+    });
+    expect(u.role).toBe('admin');
+    expect(u.notificationPrefs.issues).toBe(true);
+    expect(u.notificationPrefs.reminders).toBe(false);
+    expect(u.departmentId).toBe('dept-admin');
+  });
+
+  it('maps a user with null department_id to empty string', () => {
+    const u = mapUser({
+      id: 'u2',
+      name: 'No Dept',
+      email: 'nd@roundready.demo',
+      role: 'viewer',
+      department_id: null,
+      notification_prefs: {},
+      active: true,
+    });
+    expect(u.departmentId).toBe('');
   });
 
   it('maps a resident group with member ids', () => {

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import datetime
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class TemplateQuestionOut(BaseModel):
@@ -44,9 +45,17 @@ class RoundTemplateOut(BaseModel):
 
 class RoundTemplateCreate(BaseModel):
     name: str
-    type: str = "angel"
+    # Matches round_templates.type CHECK constraint. Validating here avoids
+    # leaking a Postgres CheckViolation as a 500.
+    type: Literal["angel", "rapid"] = "angel"
     start_date: datetime.date | None = None
     end_date: datetime.date | None = None
+
+    @model_validator(mode="after")
+    def _validate_date_order(self) -> "RoundTemplateCreate":
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValueError("end_date must be on or after start_date")
+        return self
 
 
 class RoundTemplateUpdate(BaseModel):
@@ -55,6 +64,12 @@ class RoundTemplateUpdate(BaseModel):
     start_date: datetime.date | None = None
     end_date: datetime.date | None = None
     archived_at: datetime.datetime | None = None
+
+    @model_validator(mode="after")
+    def _validate_date_order(self) -> "RoundTemplateUpdate":
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValueError("end_date must be on or after start_date")
+        return self
 
 
 class TemplateSectionCreate(BaseModel):
@@ -89,6 +104,16 @@ class RoundSubmit(BaseModel):
     answers: list[RoundAnswerSubmit]
 
 
+class RoundAnswerOut(BaseModel):
+    """Lean answer payload bundled with a Round so the dashboard can compute
+    QAPI compliance client-side without a follow-up fetch per round."""
+    question_id: UUID
+    answer: bool | None = None
+    issue_flagged: bool = False
+
+    model_config = {"from_attributes": True}
+
+
 class RoundOut(BaseModel):
     id: UUID
     template_id: UUID
@@ -100,6 +125,7 @@ class RoundOut(BaseModel):
     resident_room: str | None = None
     template_name: str | None = None
     flags_raised: int = 0
+    answers: list[RoundAnswerOut] = []
 
     model_config = {"from_attributes": True}
 

@@ -36,6 +36,30 @@ class DB:
         r.raise_for_status()
         return r.json()
 
+    async def select_all(self, table: str, params: dict | None = None,
+                          page_size: int = 1000) -> list[dict]:
+        """Select that pages past PostgREST's max-rows cap (default 1000).
+
+        Required for any table that can grow past 1000 rows — round_answers
+        in particular, where 21 days of demo seed already overflows.
+        """
+        params = dict(params or {})
+        # Caller-supplied limit takes precedence — they explicitly want a cap.
+        if "limit" in params:
+            return await self.select(table, params)
+        all_rows: list[dict] = []
+        offset = 0
+        while True:
+            page = await self.select(
+                table,
+                {**params, "limit": str(page_size), "offset": str(offset)},
+            )
+            all_rows.extend(page)
+            if len(page) < page_size:
+                break
+            offset += page_size
+        return all_rows
+
     async def insert(self, table: str, data: dict) -> dict:
         r = await self._c.post(
             f"/{table}",

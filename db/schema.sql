@@ -80,17 +80,22 @@ CREATE TABLE angels (
 -- Residents
 -- =============================================================================
 CREATE TABLE residents (
-  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  name        TEXT        NOT NULL,
-  room        TEXT        NOT NULL,
-  bed         TEXT        NOT NULL DEFAULT 'a',
-  angel_id    UUID        REFERENCES angels(id) ON DELETE SET NULL,
-  status      TEXT        NOT NULL DEFAULT 'active' CHECK (status IN ('active','discharged','hospital')),
-  pcc_id      TEXT,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id                 UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  name               TEXT        NOT NULL,
+  room               TEXT        NOT NULL,
+  bed                TEXT        NOT NULL DEFAULT 'a',
+  angel_id           UUID        REFERENCES angels(id) ON DELETE SET NULL,
+  -- Set when an angel is marked absent: preserves the resident's pre-absence
+  -- angel so that returning the angel to duty can restore the assignment,
+  -- even after redistribution to another angel.
+  original_angel_id  UUID        REFERENCES angels(id) ON DELETE SET NULL,
+  status             TEXT        NOT NULL DEFAULT 'active' CHECK (status IN ('active','discharged','hospital')),
+  pcc_id             TEXT,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX residents_angel_idx ON residents(angel_id);
-CREATE INDEX residents_room_idx  ON residents(room);
+CREATE INDEX residents_angel_idx          ON residents(angel_id);
+CREATE INDEX residents_original_angel_idx ON residents(original_angel_id);
+CREATE INDEX residents_room_idx           ON residents(room);
 
 -- =============================================================================
 -- Resident groups (wings, carts, custom)

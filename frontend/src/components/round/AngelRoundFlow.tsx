@@ -170,7 +170,9 @@ export default function AngelRoundFlow({ template, onClose }: Props) {
             {currentQuestion.text}
           </div>
           <div style={{ fontSize: 11, color: "var(--muted)" }}>
-            Flagging if {currentQuestion.issueOn === "either" ? "either" : currentQuestion.issueOn}
+            {currentQuestion.issueOn === "either"
+              ? "Informational — no automatic flag"
+              : `Flagging if ${currentQuestion.issueOn}`}
           </div>
         </div>
 
