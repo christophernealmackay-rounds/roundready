@@ -6,12 +6,14 @@ import { useResidentsStore } from "@/lib/store/useResidentsStore";
 import { useUsersStore } from "@/lib/store/useUsersStore";
 import { useRoundsStore } from "@/lib/store/useRoundsStore";
 import type { Angel } from "@/lib/types";
+import { todayIsoDate } from "@/lib/dates";
+import { PageHero, KpiCard } from "@/components/ui";
 
 type Filter = "all" | "active" | "absent";
 
 function ini(n: string) { return n.split(" ").map((p) => p[0]).join("").slice(0, 2); }
 
-const TODAY = "2026-05-06";
+const TODAY = todayIsoDate();
 
 export default function AngelsPage() {
   const angels = useAngelsStore((s) => s.angels);
@@ -55,50 +57,107 @@ export default function AngelsPage() {
   ];
 
   return (
-    <div className="max-w-[1100px] mx-auto" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div className="max-w-[1100px] mx-auto" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+      <PageHero
+        eyebrow="Angels · Department Heads"
+        title="The people"
+        accent="who round."
+        caption="Department leads who carry the rounding load. Mark absences, redistribute, restore."
+        trailing={
+          <button
+            onClick={() => setAddOpen(true)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              background: "var(--blue)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 8,
+              padding: "9px 16px",
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: "pointer",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,.18), 0 1px 2px rgba(7,43,82,.18)",
+            }}
+          >
+            <Plus size={14} /> Add Angel
+          </button>
+        }
+      />
 
       {/* KPI filter cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
         {kpiCards.map((k, i) => {
-          const isActive = (i === 0 && filter === "all") || (i === 1 && filter === "active") || (i === 2 && filter === "absent");
           const filterId: Filter = i === 1 ? "active" : i === 2 ? "absent" : "all";
+          const isActive =
+            (i === 0 && filter === "all") ||
+            (i === 1 && filter === "active") ||
+            (i === 2 && filter === "absent");
+          const accent = i === 1 ? "green" : i === 2 ? "red" : i === 3 ? "blue" : "ink";
           return (
-            <div key={k.label + i} onClick={() => setFilter(filterId)} style={{ background: isActive ? "var(--blue-tint)" : "var(--surface)", border: `1px solid ${isActive ? "var(--blue)" : "var(--hair)"}`, borderRadius: 10, padding: "12px 14px", cursor: "pointer", transition: "all 0.15s", boxShadow: "var(--shadow-sm)" }}>
-              <div style={{ fontSize: 24, fontWeight: 600, color: isActive ? "var(--blue-deep)" : k.color, lineHeight: 1, fontFamily: "var(--font-mono)" }}>{k.value}</div>
-              <div style={{ fontSize: 10, color: isActive ? "var(--blue)" : "var(--muted)", marginTop: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em" }}>{k.label}</div>
-            </div>
+            <KpiCard
+              key={k.label + i}
+              revealIndex={i}
+              label={k.label}
+              value={String(k.value)}
+              accent={accent as "green" | "red" | "blue" | "ink"}
+              active={isActive}
+              onClick={i < 3 ? () => setFilter(filterId) : undefined}
+            />
           );
         })}
       </div>
 
-      {/* Absent bar */}
+      {/* Absent bar — soft amber gradient instead of flat tint */}
       {absentAngels.length > 0 && (
-        <div style={{ background: redistributed ? "var(--green-tint)" : "var(--amber-tint)", border: `1px solid ${redistributed ? "var(--green-edge)" : "var(--amber-edge)"}`, borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, transition: "all 0.3s" }}>
+        <div
+          className="luxe-reveal-stagger"
+          style={{
+            ["--i" as string]: 4,
+            background: redistributed
+              ? "linear-gradient(180deg, var(--green-tint), var(--green-pale))"
+              : "linear-gradient(180deg, var(--amber-tint), var(--amber-pale))",
+            border: `1px solid ${redistributed ? "var(--green-edge)" : "var(--amber-edge)"}`,
+            borderRadius: 10,
+            padding: "11px 14px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            transition: "all 0.3s",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,.5)",
+          }}
+        >
           <div style={{ fontSize: 12, color: redistributed ? "var(--green)" : "var(--amber)" }}>
             {redistributed ? (
-              <><strong>Rounds redistributed.</strong> Absent angels' residents have been reassigned to available angels. Go to <strong>Residents</strong> to review assignments.</>
+              <><strong>Rounds redistributed.</strong> Absent angels&apos; residents have been reassigned to available angels. Go to <strong>Residents</strong> to review assignments.</>
             ) : (
               <><strong>{absentAngels.map((a) => a.name).join(", ")}</strong> {absentAngels.length === 1 ? "is" : "are"} marked absent today. Their residents are unassigned.</>
             )}
           </div>
           {!redistributed && (
-            <button onClick={() => { redistribute(absentAngels[0].id); setRedistributed(true); }} style={{ fontSize: 12, fontWeight: 500, padding: "6px 13px", borderRadius: 7, border: "1px solid var(--amber-edge)", background: "var(--amber-pale)", color: "var(--amber)", cursor: "pointer", flexShrink: 0 }}>
+            <button
+              onClick={() => { redistribute(absentAngels[0].id); setRedistributed(true); }}
+              style={{
+                fontSize: 12,
+                fontWeight: 500,
+                padding: "7px 14px",
+                borderRadius: 7,
+                border: "1px solid var(--amber-edge)",
+                background: "var(--surface)",
+                color: "var(--amber)",
+                cursor: "pointer",
+                flexShrink: 0,
+                boxShadow: "var(--shadow-card)",
+              }}
+            >
               Auto-redistribute rounds
             </button>
           )}
         </div>
       )}
-
-      {/* Header + Add button */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div>
-          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 500, color: "var(--ink)" }}>Angels</h1>
-          <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Department heads responsible for resident rounding</p>
-        </div>
-        <button onClick={() => setAddOpen(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--blue)", color: "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer" }}>
-          <Plus size={14} /> Add Angel
-        </button>
-      </div>
 
       {/* Filter banner */}
       {filter !== "all" && (

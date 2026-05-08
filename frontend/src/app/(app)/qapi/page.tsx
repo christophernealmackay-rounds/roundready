@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Plus, ChevronDown, ChevronRight, Archive, X, RotateCcw } from "lucide-react";
 import { useQapiStore } from "@/lib/store/useQapiStore";
 import { useRoundsStore } from "@/lib/store/useRoundsStore";
+import { PageHero } from "@/components/ui";
 import type { Qapi, QapiItem } from "@/lib/types";
 
 type SubTab = "QAPIs" | "Template" | "QAA Notes";
@@ -58,28 +59,80 @@ export default function QapiPage() {
   const displayList = [...activeQapis, ...(showArchived ? archivedQapis : [])];
 
   return (
-    <div className="max-w-[1100px] mx-auto" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div className="max-w-[1100px] mx-auto" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
 
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div>
-          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 500, color: "var(--ink)" }}>QAPI</h1>
-          <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Quality Assurance & Performance Improvement</p>
-        </div>
-        {subTab === "QAPIs" && (
-          <button onClick={() => setAddQapiOpen(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--blue)", color: "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer" }}>
-            <Plus size={14} /> New QAPI
-          </button>
-        )}
-      </div>
+      <PageHero
+        eyebrow="QAPI · Quality Assurance & Performance Improvement"
+        title="Improvement"
+        accent="initiatives & notes."
+        caption="Active and archived QAPIs, the rounding template tied to them, and the QAA Committee notes."
+        trailing={
+          subTab === "QAPIs" ? (
+            <button
+              onClick={() => setAddQapiOpen(true)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                background: "var(--blue)",
+                color: "#fff",
+                border: "none",
+                borderRadius: 8,
+                padding: "9px 16px",
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: "pointer",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,.18), 0 1px 2px rgba(7,43,82,.18)",
+              }}
+            >
+              <Plus size={14} /> New QAPI
+            </button>
+          ) : null
+        }
+      />
 
-      {/* Sub-tabs */}
+      {/* Sub-tabs — refined to match the topbar tab pattern with a plum dot
+          accent above the active sub-tab. */}
       <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--hair)" }}>
-        {(["QAPIs","Template","QAA Notes"] as SubTab[]).map((t) => (
-          <button key={t} onClick={() => setSubTab(t)} style={{ padding: "10px 20px", fontSize: 13, fontWeight: 500, cursor: "pointer", background: "none", border: "none", color: subTab === t ? "var(--blue)" : "var(--muted)", borderBottom: subTab === t ? "2px solid var(--blue)" : "2px solid transparent", transition: "all 0.2s", marginBottom: -1 }}>
-            {t}
-          </button>
-        ))}
+        {(["QAPIs", "Template", "QAA Notes"] as SubTab[]).map((t) => {
+          const active = subTab === t;
+          return (
+            <button
+              key={t}
+              onClick={() => setSubTab(t)}
+              style={{
+                position: "relative",
+                padding: "11px 22px",
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: "pointer",
+                background: "none",
+                border: "none",
+                color: active ? "var(--blue-deep)" : "var(--muted)",
+                borderBottom: active ? "2px solid var(--blue)" : "2px solid transparent",
+                transition: "color 180ms var(--ease-luxe)",
+                marginBottom: -1,
+              }}
+            >
+              {active && (
+                <span
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    top: 4,
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    width: 4,
+                    height: 4,
+                    borderRadius: 999,
+                    background: "var(--plum)",
+                  }}
+                />
+              )}
+              {t}
+            </button>
+          );
+        })}
       </div>
 
       {/* QAPIs Tab */}
@@ -200,28 +253,89 @@ export default function QapiPage() {
         </div>
       )}
 
-      {/* QAA Notes Tab */}
+      {/* QAA Notes Tab — book-margin reading experience. The textarea is
+          centered to a comfortable line length (~70ch), uses the display
+          font for the heading and sits on a paper-cream surface so the
+          notes feel like committee minutes rather than a generic textbox. */}
       {subTab === "QAA Notes" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ fontSize: 11, color: "var(--muted)" }}>
-              Last updated {fmt(notes.updatedAt)}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 760, margin: "0 auto", width: "100%" }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+            <div>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "var(--plum)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.18em",
+                  fontWeight: 600,
+                  marginBottom: 4,
+                }}
+              >
+                Committee notes
+              </div>
+              <div
+                style={{
+                  fontFamily: "var(--font-display)",
+                  fontStyle: "italic",
+                  fontSize: 22,
+                  fontWeight: 400,
+                  color: "var(--blue-ink)",
+                  letterSpacing: "-0.012em",
+                }}
+              >
+                QAA Committee Meeting Minutes
+              </div>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+                Last updated {fmt(notes.updatedAt)}
+              </div>
             </div>
-            {notesSaved && !notesDirty && (
-              <span style={{ fontSize: 12, color: "var(--green)", fontWeight: 500, display: "flex", alignItems: "center", gap: 5 }}>
-                ✓ Saved
-              </span>
-            )}
-            {notesDirty && (
-              <button onClick={() => { updateNotes(notesValue); setNotesDirty(false); setNotesSaved(true); }} style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "var(--blue)", color: "#fff", fontSize: 12, fontWeight: 500, cursor: "pointer" }}>
-                Save notes
-              </button>
-            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {notesSaved && !notesDirty && (
+                <span style={{ fontSize: 12, color: "var(--green)", fontWeight: 500, display: "flex", alignItems: "center", gap: 5 }}>
+                  ✓ Saved
+                </span>
+              )}
+              {notesDirty && (
+                <button
+                  onClick={() => { updateNotes(notesValue); setNotesDirty(false); setNotesSaved(true); }}
+                  style={{
+                    padding: "8px 18px",
+                    borderRadius: 8,
+                    border: "none",
+                    background: "var(--blue)",
+                    color: "#fff",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                    boxShadow: "inset 0 1px 0 rgba(255,255,255,.18), 0 1px 2px rgba(7,43,82,.18)",
+                  }}
+                >
+                  Save notes
+                </button>
+              )}
+            </div>
           </div>
           <textarea
             value={notesValue}
             onChange={(e) => { setNotesValue(e.target.value); setNotesDirty(true); setNotesSaved(false); }}
-            style={{ width: "100%", minHeight: 480, padding: "16px 18px", borderRadius: 12, border: "1px solid var(--hair)", background: "var(--surface)", fontSize: 13, color: "var(--ink)", outline: "none", resize: "vertical", lineHeight: 1.7, fontFamily: "var(--font-ui)", boxSizing: "border-box", boxShadow: "var(--shadow-sm)" }}
+            style={{
+              width: "100%",
+              minHeight: 540,
+              padding: "26px 36px",
+              borderRadius: 14,
+              border: "1px solid var(--hair)",
+              background: "var(--surface)",
+              fontSize: 14,
+              color: "var(--ink)",
+              outline: "none",
+              resize: "vertical",
+              lineHeight: 1.75,
+              fontFamily: "var(--font-display)",
+              fontWeight: 400,
+              letterSpacing: "-0.005em",
+              boxSizing: "border-box",
+              boxShadow: "var(--shadow-card)",
+            }}
             placeholder="Record QAA committee meeting minutes, action items, and decisions here…"
           />
         </div>

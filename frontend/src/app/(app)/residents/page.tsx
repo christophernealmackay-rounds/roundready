@@ -6,6 +6,7 @@ import { useAngelsStore } from "@/lib/store/useAngelsStore";
 import { useResidentGroupsStore } from "@/lib/store/useResidentGroupsStore";
 import GroupPills from "@/components/groups/GroupPills";
 import GroupManager from "@/components/groups/GroupManager";
+import { PageHero, KpiCard, RefinedCard } from "@/components/ui";
 import type { Resident } from "@/lib/types";
 
 type ResFilter = "all" | "assigned" | "unassigned";
@@ -68,43 +69,105 @@ export default function ResidentsPage() {
   }
 
   return (
-    <div className="max-w-[1100px] mx-auto" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div className="max-w-[1100px] mx-auto" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+      <PageHero
+        eyebrow="Residents · Census"
+        title="Twenty under"
+        accent="our care."
+        caption="Active census, angel assignments, and PCC sync state."
+        trailing={
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => autoAssign()}
+              style={{
+                fontSize: 12,
+                fontWeight: 500,
+                padding: "7px 14px",
+                borderRadius: 8,
+                border: "1px solid var(--hair-strong)",
+                background: "var(--surface)",
+                color: "var(--ink-soft)",
+                cursor: "pointer",
+                boxShadow: "var(--shadow-card)",
+              }}
+            >
+              Auto-assign all
+            </button>
+            <button
+              style={{
+                fontSize: 12,
+                fontWeight: 500,
+                padding: "7px 14px",
+                borderRadius: 8,
+                border: "1px solid var(--hair-strong)",
+                background: "var(--surface)",
+                color: "var(--ink-soft)",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                boxShadow: "var(--shadow-card)",
+              }}
+            >
+              <RefreshCw size={12} /> Sync from PCC
+            </button>
+          </div>
+        }
+      />
 
       {/* KPI filter cards + PCC status */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
-        {kpiCards.map((k) => {
-          const active = resFilter === k.id;
+        {kpiCards.map((k, i) => {
+          const accent = k.id === "assigned" ? "green" : k.id === "unassigned" ? "amber" : "ink";
           return (
-            <div key={k.label} onClick={() => setResFilter(k.id)} style={{ background: active ? "var(--blue-tint)" : "var(--surface)", border: `1px solid ${active ? "var(--blue)" : "var(--hair)"}`, borderRadius: 10, padding: "12px 14px", cursor: "pointer", transition: "all 0.15s", boxShadow: "var(--shadow-sm)" }}>
-              <div style={{ fontSize: 24, fontWeight: 600, color: active ? "var(--blue-deep)" : k.color, lineHeight: 1, fontFamily: "var(--font-mono)" }}>{k.value}</div>
-              <div style={{ fontSize: 10, color: active ? "var(--blue)" : "var(--muted)", marginTop: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em" }}>{k.label}</div>
-            </div>
+            <KpiCard
+              key={k.label}
+              revealIndex={i}
+              label={k.label}
+              value={String(k.value)}
+              accent={accent as "green" | "amber" | "ink"}
+              active={resFilter === k.id}
+              onClick={() => setResFilter(k.id)}
+            />
           );
         })}
-        {/* PCC status */}
-        <div style={{ background: "var(--surface)", border: "1px solid var(--hair)", borderRadius: 10, padding: "12px 14px", boxShadow: "var(--shadow-sm)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: pccConnected ? "var(--green)" : "var(--muted)" }} />
-            <span style={{ fontSize: 11, fontWeight: 600, color: pccConnected ? "var(--green)" : "var(--muted)" }}>{pccConnected ? "PCC Connected" : "PCC Disconnected"}</span>
+        {/* PCC status — uses RefinedCard for visual parity with KpiCards */}
+        <RefinedCard revealIndex={3} padding="12px 14px">
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                background: pccConnected ? "var(--green)" : "var(--muted)",
+                boxShadow: pccConnected ? "0 0 6px rgba(59,109,17,.5)" : undefined,
+              }}
+            />
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: pccConnected ? "var(--green)" : "var(--muted)",
+                fontFamily: "var(--font-mono)",
+                letterSpacing: "0.04em",
+              }}
+            >
+              {pccConnected ? "PCC Connected" : "PCC Disconnected"}
+            </span>
           </div>
-          <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.07em", fontWeight: 600 }}>PointClickCare</div>
-        </div>
-      </div>
-
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-        <div>
-          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 500, color: "var(--ink)" }}>Residents</h1>
-          <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Census and angel assignments</p>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => autoAssign()} style={{ fontSize: 12, fontWeight: 500, padding: "7px 14px", borderRadius: 8, border: "1px solid var(--hair-strong)", background: "var(--surface)", color: "var(--ink-soft)", cursor: "pointer" }}>
-            Auto-assign all
-          </button>
-          <button style={{ fontSize: 12, fontWeight: 500, padding: "7px 14px", borderRadius: 8, border: "1px solid var(--hair-strong)", background: "var(--surface)", color: "var(--ink-soft)", cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
-            <RefreshCw size={12} /> Sync from PCC
-          </button>
-        </div>
+          <div
+            style={{
+              fontSize: 10,
+              color: "var(--muted)",
+              textTransform: "uppercase",
+              letterSpacing: "0.13em",
+              fontWeight: 600,
+            }}
+          >
+            PointClickCare
+          </div>
+        </RefinedCard>
       </div>
 
       {/* Group pills (wings + custom carts) */}

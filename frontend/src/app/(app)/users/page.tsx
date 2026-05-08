@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Plus, Search, Pencil, X } from "lucide-react";
 import { useUsersStore } from "@/lib/store/useUsersStore";
+import { PageHero } from "@/components/ui";
 import type { User, Role } from "@/lib/types";
 
 const roleLabel: Record<Role, { label: string; bg: string; color: string }> = {
@@ -24,7 +25,7 @@ export default function UsersPage() {
   const [deptOpen, setDeptOpen] = useState(false);
   const [newDept, setNewDept] = useState("");
   const [form, setForm] = useState<{ name: string; email: string; role: Role; departmentId: string }>({
-    name: "", email: "", role: "angel", departmentId: "dept-1",
+    name: "", email: "", role: "angel", departmentId: "",
   });
 
   const filtered = users.filter((u) =>
@@ -38,7 +39,7 @@ export default function UsersPage() {
     if (!form.name.trim() || !form.email.trim()) return;
     addUser({ ...form, active: true, notificationPrefs: {} });
     setAddOpen(false);
-    setForm({ name: "", email: "", role: "angel", departmentId: "dept-1" });
+    setForm({ name: "", email: "", role: "angel", departmentId: "" });
   }
 
   function saveEdit() {
@@ -48,23 +49,53 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="max-w-[1100px] mx-auto" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div className="max-w-[1100px] mx-auto" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
 
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-        <div>
-          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 500, color: "var(--ink)" }}>Users</h1>
-          <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Manage team members, roles, and permissions</p>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => setDeptOpen(true)} style={{ fontSize: 12, fontWeight: 500, padding: "7px 14px", borderRadius: 8, border: "1px solid var(--hair-strong)", background: "var(--surface)", color: "var(--ink-soft)", cursor: "pointer" }}>
-            Departments
-          </button>
-          <button onClick={() => setAddOpen(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--blue)", color: "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer" }}>
-            <Plus size={14} /> Add User
-          </button>
-        </div>
-      </div>
+      <PageHero
+        eyebrow="Users · Roles & Permissions"
+        title="Team and"
+        accent="department heads."
+        caption="Administrators, angels, charge nurses, and viewers — with their notification preferences."
+        trailing={
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => setDeptOpen(true)}
+              style={{
+                fontSize: 12,
+                fontWeight: 500,
+                padding: "7px 14px",
+                borderRadius: 8,
+                border: "1px solid var(--hair-strong)",
+                background: "var(--surface)",
+                color: "var(--ink-soft)",
+                cursor: "pointer",
+                boxShadow: "var(--shadow-card)",
+              }}
+            >
+              Departments
+            </button>
+            <button
+              onClick={() => setAddOpen(true)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                background: "var(--blue)",
+                color: "#fff",
+                border: "none",
+                borderRadius: 8,
+                padding: "9px 16px",
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: "pointer",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,.18), 0 1px 2px rgba(7,43,82,.18)",
+              }}
+            >
+              <Plus size={14} /> Add User
+            </button>
+          </div>
+        }
+      />
 
       {/* Search */}
       <div style={{ position: "relative", maxWidth: 320 }}>

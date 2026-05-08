@@ -4,6 +4,7 @@ import { Bell, X } from "lucide-react";
 import { useIssuesStore } from "@/lib/store/useIssuesStore";
 import { useUsersStore } from "@/lib/store/useUsersStore";
 import { useCurrentUser } from "@/lib/auth/currentUser";
+import { PageHero, Pill } from "@/components/ui";
 import type { Issue } from "@/lib/types";
 
 type FlagFilter = "open" | "resolved" | "all";
@@ -74,31 +75,45 @@ export default function IssuesPage() {
   }
 
   return (
-    <div className="max-w-[1100px] mx-auto" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div className="max-w-[1100px] mx-auto" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
 
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-        <div>
-          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 500, color: "var(--ink)" }}>Issues</h1>
-          <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Flagged concerns from angel rounds</p>
-        </div>
-        <div style={{ fontSize: 12, color: "var(--muted)" }}>
-          <span style={{ fontFamily: "var(--font-mono)", color: "var(--red)", fontWeight: 600 }}>{open.length}</span> open &nbsp;·&nbsp;
-          <span style={{ fontFamily: "var(--font-mono)", color: "var(--green)", fontWeight: 600 }}>{resolved.length}</span> resolved
-        </div>
-      </div>
+      <PageHero
+        eyebrow="Issues · Flagged Concerns"
+        title="Watch list,"
+        accent="open and resolved."
+        caption="Concerns surfaced during angel rounds. Resolution mirrors the audit trail."
+        trailing={
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--muted)",
+              fontFamily: "var(--font-mono)",
+              display: "flex",
+              alignItems: "center",
+              gap: 14,
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            <span>
+              <span style={{ color: "var(--red)", fontWeight: 600 }}>{open.length}</span>
+              <span style={{ marginLeft: 5 }}>open</span>
+            </span>
+            <span style={{ color: "var(--hair-strong)" }}>·</span>
+            <span>
+              <span style={{ color: "var(--green)", fontWeight: 600 }}>{resolved.length}</span>
+              <span style={{ marginLeft: 5 }}>resolved</span>
+            </span>
+          </div>
+        }
+      />
 
       {/* Filter pills */}
-      <div style={{ display: "flex", gap: 6 }}>
+      <div className="luxe-reveal-stagger" style={{ ["--i" as string]: 0, display: "flex", gap: 6 }}>
         {(["open","resolved","all"] as FlagFilter[]).map((f) => (
-          <button key={f} onClick={() => setFlagFilter(f)} style={{
-            fontSize: 12, fontWeight: 500, padding: "5px 14px", borderRadius: 20, cursor: "pointer", transition: "all 0.15s",
-            border: `1px solid ${flagFilter === f ? "var(--blue)" : "var(--hair-strong)"}`,
-            background: flagFilter === f ? "var(--blue-tint)" : "var(--surface)",
-            color: flagFilter === f ? "var(--blue)" : "var(--muted)",
-          }}>
-            {f.charAt(0).toUpperCase() + f.slice(1)} {f === "open" ? `(${open.length})` : f === "resolved" ? `(${resolved.length})` : `(${issues.length})`}
-          </button>
+          <Pill key={f} active={flagFilter === f} onClick={() => setFlagFilter(f)}>
+            {f.charAt(0).toUpperCase() + f.slice(1)}{" "}
+            {f === "open" ? `(${open.length})` : f === "resolved" ? `(${resolved.length})` : `(${issues.length})`}
+          </Pill>
         ))}
       </div>
 

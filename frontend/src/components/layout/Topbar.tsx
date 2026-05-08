@@ -5,6 +5,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { useIssuesStore, useRoundsStore, useUsersStore } from "@/lib/store";
 import { initials, useCurrentUser } from "@/lib/auth/currentUser";
+import { todayDisplay } from "@/lib/dates";
 import type { NotificationPrefs } from "@/lib/types";
 
 const NAV = [
@@ -55,29 +56,103 @@ export default function Topbar() {
 
   return (
     <>
-      <header className="sticky top-0 z-[100] flex flex-col" style={{ background: "var(--topbar-gradient)" }}>
+      <header
+        className="sticky top-0 z-[100] flex flex-col"
+        style={{
+          // Layered: blue gradient + faint paper-grain noise + 1px highlight
+          // rule on the bottom edge. The noise prevents banding and gives
+          // the bar a hint of physical texture without being distracting.
+          backgroundImage: "var(--topbar-noise), var(--topbar-gradient)",
+          backgroundBlendMode: "soft-light, normal",
+          boxShadow: "inset 0 -1px 0 rgba(255,255,255,0.08), 0 1px 0 rgba(7,43,82,.18)",
+        }}
+      >
         <div className="flex items-center h-[56px] px-6 gap-6">
-          <span style={{ fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 500, letterSpacing: "-0.02em", color: "#fff" }}>
+          <span
+            style={{
+              fontFamily: "var(--font-display)",
+              fontSize: 18,
+              fontWeight: 500,
+              letterSpacing: "-0.02em",
+              color: "#fff",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: 999,
+                background: "#fff",
+                boxShadow: "0 0 0 2px rgba(255,255,255,0.18)",
+              }}
+            />
             RoundReady
           </span>
-          <span style={{ fontSize: 11, fontWeight: 400, letterSpacing: "0.005em", color: "rgba(255,255,255,0.55)" }}>|</span>
-          <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,0.6)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+          <span style={{ fontSize: 11, fontWeight: 400, letterSpacing: "0.005em", color: "rgba(255,255,255,0.35)" }}>|</span>
+          <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,0.62)", letterSpacing: "0.13em", textTransform: "uppercase" }}>
             Admin Portal
           </span>
-          <span style={{ fontSize: 11.5, color: "rgba(255,255,255,0.6)" }}>Sunrise Gardens SNF</span>
+          <span
+            style={{
+              fontFamily: "var(--font-display)",
+              fontStyle: "italic",
+              fontSize: 12.5,
+              color: "rgba(255,255,255,0.78)",
+              letterSpacing: "-0.005em",
+            }}
+          >
+            Sunrise Gardens SNF
+          </span>
           <div className="flex-1" />
-          <span style={{ fontSize: 11.5, color: "rgba(255,255,255,0.5)" }}>Tue May 6, 2026</span>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 7,
+              fontSize: 11.5,
+              color: "rgba(255,255,255,0.62)",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: 999,
+                background: "#a8cc6a",
+                boxShadow: "0 0 0 2px rgba(168,204,106,0.22)",
+              }}
+            />
+            {todayDisplay()}
+          </span>
           <button
             onClick={() => setSettingsOpen(true)}
             className="flex items-center justify-center w-8 h-8 rounded-full transition-all hover:bg-white/10"
             aria-label="Settings"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M6.5 2h3l.4 1.4a5 5 0 0 1 1.2.7l1.4-.4 1.5 2.6-1 1a5 5 0 0 1 0 1.4l1 1-1.5 2.6-1.4-.4a5 5 0 0 1-1.2.7L9.5 14h-3l-.4-1.4a5 5 0 0 1-1.2-.7l-1.4.4L2 9.7l1-1a5 5 0 0 1 0-1.4l-1-1L3.5 3.7l1.4.4a5 5 0 0 1 1.2-.7L6.5 2Z" stroke="rgba(255,255,255,0.8)" strokeWidth="1.3"/>
-              <circle cx="8" cy="8" r="2" stroke="rgba(255,255,255,0.8)" strokeWidth="1.3"/>
+              <path d="M6.5 2h3l.4 1.4a5 5 0 0 1 1.2.7l1.4-.4 1.5 2.6-1 1a5 5 0 0 1 0 1.4l1 1-1.5 2.6-1.4-.4a5 5 0 0 1-1.2.7L9.5 14h-3l-.4-1.4a5 5 0 0 1-1.2-.7l-1.4.4L2 9.7l1-1a5 5 0 0 1 0-1.4l-1-1L3.5 3.7l1.4.4a5 5 0 0 1 1.2-.7L6.5 2Z" stroke="rgba(255,255,255,0.85)" strokeWidth="1.3"/>
+              <circle cx="8" cy="8" r="2" stroke="rgba(255,255,255,0.85)" strokeWidth="1.3"/>
             </svg>
           </button>
-          <div className="flex items-center justify-center w-8 h-8 rounded-full select-none" style={{ background: "var(--avatar-gradient)", fontSize: 10.5, fontWeight: 600, letterSpacing: "0.02em", color: "#fff", boxShadow: "0 0 0 2px rgba(255,255,255,0.15)" }} title={currentUser?.name ?? ""}>
+          <div
+            className="flex items-center justify-center w-8 h-8 rounded-full select-none"
+            style={{
+              background: "var(--avatar-gradient)",
+              fontSize: 10.5,
+              fontWeight: 600,
+              letterSpacing: "0.02em",
+              color: "#fff",
+              boxShadow:
+                "0 0 0 2px rgba(255,255,255,0.18), inset 0 1px 0 rgba(255,255,255,0.18)",
+            }}
+            title={currentUser?.name ?? ""}
+          >
             {currentUser ? initials(currentUser.name) : ""}
           </div>
         </div>
@@ -87,10 +162,53 @@ export default function Topbar() {
             const active = pathname === tab.href || (tab.href !== "/dashboard" && pathname.startsWith(tab.href));
             const badge = tab.label === "Issues" ? openCount : undefined;
             return (
-              <Link key={tab.href} href={tab.href} style={{ fontSize: 13, fontWeight: 500, padding: "13px 16px", color: active ? "#fff" : "rgba(255,255,255,0.6)", borderBottom: active ? "2px solid #fff" : "2px solid transparent", transition: "all 0.15s", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
+              <Link
+                key={tab.href}
+                href={tab.href}
+                style={{
+                  position: "relative",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  padding: "13px 16px",
+                  color: active ? "#fff" : "rgba(255,255,255,0.55)",
+                  borderBottom: active ? "2px solid #fff" : "2px solid transparent",
+                  transition: "color 180ms var(--ease-luxe)",
+                  whiteSpace: "nowrap",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                {/* Tiny plum status dot above the active tab — subtle editorial flourish */}
+                {active && (
+                  <span
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      top: 5,
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      width: 4,
+                      height: 4,
+                      borderRadius: 999,
+                      background: "rgba(232, 228, 245, 0.95)",
+                      boxShadow: "0 0 8px rgba(232,228,245,0.6)",
+                    }}
+                  />
+                )}
                 {tab.label}
                 {badge !== undefined && badge > 0 && (
-                  <span style={{ background: "var(--red-tint)", color: "var(--red)", fontSize: 10, fontWeight: 600, padding: "1px 6px", borderRadius: 10 }}>
+                  <span
+                    style={{
+                      background: "var(--red-tint)",
+                      color: "var(--red)",
+                      fontSize: 10,
+                      fontWeight: 600,
+                      padding: "1px 6px",
+                      borderRadius: 10,
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
                     {badge}
                   </span>
                 )}

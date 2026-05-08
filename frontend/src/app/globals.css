@@ -53,8 +53,22 @@
   --shadow-lg: 0 8px 24px rgba(20,23,28,.08), 0 2px 4px rgba(20,23,28,.04);
   --shadow-xl: 0 24px 60px rgba(7,43,82,.18), 0 4px 12px rgba(20,23,28,.08);
 
+  /* Editorial-luxe: cards get an inner highlight on the top edge plus a
+     warmer drop shadow than the cool grays the rest of the system uses,
+     so they pop against the cream background without feeling cold. */
+  --shadow-card:        inset 0 1px 0 rgba(255,255,255,.7), 0 1px 1px rgba(20,23,28,.03), 0 4px 14px rgba(60,52,89,.05);
+  --shadow-card-hover:  inset 0 1px 0 rgba(255,255,255,.85), 0 1px 1px rgba(20,23,28,.04), 0 8px 24px rgba(60,52,89,.09);
+  --shadow-hero:        0 1px 0 rgba(255,255,255,.6) inset, 0 12px 40px rgba(7,43,82,.10);
+
+  /* Smooth, restrained easing — nothing bouncy. */
+  --ease-luxe:     cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-luxe-out: cubic-bezier(0.32, 0.72, 0.16, 1);
+
+  /* Layered topbar: deep blue gradient + a barely-perceptible noise texture
+     that prevents banding and adds a hint of paper grain. */
   --topbar-gradient: linear-gradient(180deg, #1A5FA8 0%, #155291 100%);
   --avatar-gradient: linear-gradient(135deg, #0C447C 0%, #072B52 100%);
+  --topbar-noise:    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='3'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.18 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/></svg>");
 }
 
 @theme inline {
@@ -119,4 +133,66 @@ body {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted);
+}
+
+/* ─── Editorial-luxe motion ────────────────────────────────────────────────
+ * One signature page-load reveal used by every (app) route page. The hero
+ * heading slides up into place, KPI cards stagger in, body content fades
+ * last. Everything completes inside ~400ms — visible but not slow.
+ *
+ * Components opt-in by adding .luxe-reveal-hero / .luxe-reveal-stagger /
+ * .luxe-reveal-body and (for stagger) inline `style="--i: 0|1|2|..."`. */
+
+@keyframes luxe-rise {
+  0%   { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes luxe-fade {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+.luxe-reveal-hero {
+  animation: luxe-rise 240ms var(--ease-luxe-out) both;
+}
+.luxe-reveal-stagger {
+  animation: luxe-rise 240ms var(--ease-luxe-out) both;
+  animation-delay: calc(120ms + var(--i, 0) * 60ms);
+}
+.luxe-reveal-body {
+  animation: luxe-fade 220ms var(--ease-luxe) both;
+  animation-delay: 280ms;
+}
+
+/* Refined card: sits flat by default, lifts subtly on hover. The inner
+ * white highlight + warm shadow combo is what differentiates "luxe" from
+ * the existing flat-with-tiny-shadow look. */
+.luxe-card {
+  background: var(--surface);
+  border: 1px solid var(--hair);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  transition: transform 180ms var(--ease-luxe), box-shadow 180ms var(--ease-luxe), border-color 180ms var(--ease-luxe);
+}
+.luxe-card-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--hair-strong);
+}
+
+/* Active-state pill (used by date range, filter pills, sub-tabs) — adds
+ * an inset glow that the existing flat tint lacks. */
+.luxe-pill-active {
+  background: var(--blue-tint);
+  border: 1px solid var(--blue);
+  color: var(--blue-deep);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 1px 0 rgba(26,95,168,.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .luxe-reveal-hero,
+  .luxe-reveal-stagger,
+  .luxe-reveal-body {
+    animation: none;
+  }
 }

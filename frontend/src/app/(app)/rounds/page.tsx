@@ -15,20 +15,17 @@ import { useQapiStore } from "@/lib/store/useQapiStore";
 import { useUsersStore } from "@/lib/store/useUsersStore";
 import MobileFrame from "@/components/round/MobileFrame";
 import AngelRoundFlow from "@/components/round/AngelRoundFlow";
+import { formatDate } from "@/lib/dates";
+import { PageHero } from "@/components/ui";
 import type { Question, TemplateSection } from "@/lib/types";
 
 type RoundsTab = "Angel Rounds" | "Rapid Round";
 
 const DRAG_MIME = "application/x-rr-question-id";
 
-function fmt(s: string) {
-  if (!s) return "";
-  return new Date(s).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
+// Use shared formatDate so YYYY-MM-DD strings parse as local time
+// instead of UTC, which was shifting RapidRound dates back one day.
+const fmt = formatDate;
 
 export default function RoundsPage() {
   const templates = useRoundsStore((s) => s.templates);
@@ -124,42 +121,84 @@ export default function RoundsPage() {
   }
 
   return (
-    <div className="max-w-[1200px] mx-auto" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-        <div>
-          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 500, color: "var(--ink)" }}>Rounds</h1>
-          <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-            Build templates from QAPI items, then run rounds with your angels
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            onClick={() => setArchivedOpen(true)}
-            style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: "1px solid var(--hair-strong)", background: "var(--surface)", color: "var(--ink-soft)", fontSize: 12, fontWeight: 500, cursor: "pointer" }}
-          >
-            <Archive size={13} /> Archived ({archivedTemplates.length})
-          </button>
-          {tab === "Angel Rounds" && (
+    <div className="max-w-[1200px] mx-auto" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <PageHero
+        eyebrow="Rounds · Templates & Live Rounds"
+        title="Build, run,"
+        accent="and respond."
+        caption="Compose rounding templates from QAPI items. Run live or rapid-response rounds with your angels."
+        trailing={
+          <div style={{ display: "flex", gap: 8 }}>
             <button
-              onClick={() => setRunOpen(true)}
-              disabled={!activeAngelTemplate}
-              title={!activeAngelTemplate ? "No active template — create one first" : "Open the angel-side rounding view"}
-              style={{ display: "flex", alignItems: "center", gap: 6, background: activeAngelTemplate ? "var(--green)" : "var(--hair-strong)", color: activeAngelTemplate ? "#fff" : "var(--muted)", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 500, cursor: activeAngelTemplate ? "pointer" : "not-allowed" }}
+              onClick={() => setArchivedOpen(true)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                borderRadius: 8,
+                border: "1px solid var(--hair-strong)",
+                background: "var(--surface)",
+                color: "var(--ink-soft)",
+                fontSize: 12,
+                fontWeight: 500,
+                cursor: "pointer",
+                boxShadow: "var(--shadow-card)",
+              }}
             >
-              <Play size={14} /> Run round
+              <Archive size={13} /> Archived ({archivedTemplates.length})
             </button>
-          )}
-          {tab === "Rapid Round" && (
-            <button
-              onClick={() => setRapidOpen(true)}
-              style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--blue)", color: "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer" }}
-            >
-              <Zap size={14} /> New RapidRound
-            </button>
-          )}
-        </div>
-      </div>
+            {tab === "Angel Rounds" && (
+              <button
+                onClick={() => setRunOpen(true)}
+                disabled={!activeAngelTemplate}
+                title={!activeAngelTemplate ? "No active template — create one first" : "Open the angel-side rounding view"}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  background: activeAngelTemplate
+                    ? "linear-gradient(180deg, var(--green-mid), var(--green))"
+                    : "var(--hair-strong)",
+                  color: activeAngelTemplate ? "#fff" : "var(--muted)",
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "9px 16px",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: activeAngelTemplate ? "pointer" : "not-allowed",
+                  boxShadow: activeAngelTemplate
+                    ? "inset 0 1px 0 rgba(255,255,255,.18), 0 1px 2px rgba(59,109,17,.4)"
+                    : undefined,
+                }}
+              >
+                <Play size={14} /> Run round
+              </button>
+            )}
+            {tab === "Rapid Round" && (
+              <button
+                onClick={() => setRapidOpen(true)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  background: "var(--blue)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "9px 16px",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                  boxShadow: "inset 0 1px 0 rgba(255,255,255,.18), 0 1px 2px rgba(7,43,82,.18)",
+                }}
+              >
+                <Zap size={14} /> New RapidRound
+              </button>
+            )}
+          </div>
+        }
+      />
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--hair)" }}>
