@@ -52,10 +52,38 @@ async def update_qapi(qapi_id: uuid.UUID, body: QapiUpdate, client: httpx.AsyncC
     rows = await db.select("qapis", {"id": f"eq.{qapi_id}"})
     if not rows:
         raise HTTPException(404, "QAPI not found")
-    data = {k: v for k, v in body.model_dump().items() if v is not None}
-    if data.get("date_identified"):
-        data["date_identified"] = data["date_identified"].isoformat()
-    qapi = await db.update("qapis", {"id": str(qapi_id)}, data) if data else rows[0]
+    existing = rows[0]
+
+    # Compute the effective state of the row *after* this PATCH applies, so
+    # the validator can reject archive attempts that would leave the row in
+    # an inconsistent state. body.model_fields_set distinguishes "client
+    # explicitly sent null" from "client omitted the field".
+    next_status = body.status if body.status is not None else existing.get("status")
+    if "actual_completion" in body.model_fields_set:
+        next_completion = body.actual_completion
+    else:
+        next_completion = existing.get("actual_completion")
+    if next_status == "archived" and not next_completion:
+        raise HTTPException(
+            422, "actual_completion is required to archive a QAPI"
+        )
+
+    # Default behavior is "skip None fields" so PATCH only touches what the
+    # client sent. actual_completion needs an exception: when status moves
+    # back to 'active', we force-clear the completion date even though it
+    # arrives as None. Do NOT generalize this — other fields keep the old
+    # semantics intentionally.
+    data: dict = {k: v for k, v in body.model_dump().items() if v is not None}
+    if body.status == "active":
+        data["actual_completion"] = None
+    elif "actual_completion" in body.model_fields_set:
+        data["actual_completion"] = body.actual_completion
+
+    for date_field in ("date_identified", "actual_completion"):
+        if data.get(date_field):
+            data[date_field] = data[date_field].isoformat()
+
+    qapi = await db.update("qapis", {"id": str(qapi_id)}, data) if data else existing
     return await _with_items(qapi, db)
 
 

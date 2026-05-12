@@ -195,11 +195,14 @@ export default function ResidentsPage() {
 
       <GroupManager open={groupManagerOpen} onClose={() => setGroupManagerOpen(false)} />
 
-      {/* Resident list */}
+      {/* Resident list — "Angel" = permanent owner, "Covering" = current
+          temporary cover during the permanent angel's absence. The Covering
+          column stays visible even when no redistribution is active; rows
+          without a cover show an em-dash so the column reads cleanly. */}
       <div style={{ background: "var(--surface)", border: "1px solid var(--hair)", borderRadius: 12, boxShadow: "var(--shadow-sm)", overflow: "hidden" }}>
         {/* Table header */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 60px 1fr auto", gap: 12, padding: "10px 18px", borderBottom: "1px solid var(--hair)", background: "var(--surface-alt)" }}>
-          {["Resident","Room","Bed","Angel",""].map((h) => (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 70px 50px 1fr 1fr auto", gap: 12, padding: "10px 18px", borderBottom: "1px solid var(--hair)", background: "var(--surface-alt)" }}>
+          {["Resident","Room","Bed","Angel","Covering",""].map((h) => (
             <div key={h} style={{ fontSize: 10, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.07em" }}>{h}</div>
           ))}
         </div>
@@ -207,9 +210,14 @@ export default function ResidentsPage() {
         {displayed.length === 0 ? (
           <div style={{ padding: 32, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No residents match your filters</div>
         ) : displayed.map((r, i) => {
-          const angel = getAngel(r.angelId);
+          // Permanent owner stays in the "Angel" column. When the resident
+          // is being covered, originalAngelId points at that owner and
+          // angelId points at whoever is filling in (or null if uncovered).
+          const isCovered = r.originalAngelId !== null;
+          const permanentAngel = getAngel(isCovered ? r.originalAngelId : r.angelId);
+          const coveringAngel = isCovered ? getAngel(r.angelId) : null;
           return (
-            <div key={r.id} style={{ display: "grid", gridTemplateColumns: "1fr 80px 60px 1fr auto", gap: 12, padding: "12px 18px", borderBottom: i < displayed.length - 1 ? "1px solid var(--hair-soft)" : undefined, alignItems: "center" }}>
+            <div key={r.id} style={{ display: "grid", gridTemplateColumns: "1fr 70px 50px 1fr 1fr auto", gap: 12, padding: "12px 18px", borderBottom: i < displayed.length - 1 ? "1px solid var(--hair-soft)" : undefined, alignItems: "center" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ width: 30, height: 30, borderRadius: "50%", background: "var(--surface-alt)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: "var(--muted)", flexShrink: 0 }}>
                   {ini(r.name)}
@@ -219,10 +227,37 @@ export default function ResidentsPage() {
               <span style={{ fontSize: 12, fontFamily: "var(--font-mono)", color: "var(--ink)" }}>{r.room}</span>
               <span style={{ fontSize: 12, fontFamily: "var(--font-mono)", color: "var(--muted)" }}>{r.bed}</span>
               <div>
-                {angel ? (
-                  <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>{angel.name}</span>
+                {permanentAngel ? (
+                  <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>{permanentAngel.name}</span>
                 ) : (
                   <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 999, background: "var(--amber-tint)", color: "var(--amber)" }}>Unassigned</span>
+                )}
+              </div>
+              <div>
+                {isCovered ? (
+                  coveringAngel ? (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                      <span
+                        aria-hidden
+                        style={{ width: 5, height: 5, borderRadius: 999, background: "var(--plum)", flexShrink: 0 }}
+                      />
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontFamily: "var(--font-display)",
+                          fontStyle: "italic",
+                          color: "var(--plum)",
+                          letterSpacing: "-0.005em",
+                        }}
+                      >
+                        {coveringAngel.name}
+                      </span>
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 999, background: "var(--amber-tint)", color: "var(--amber)" }}>Unassigned</span>
+                  )
+                ) : (
+                  <span style={{ fontSize: 12, color: "var(--hair-strong)" }}>—</span>
                 )}
               </div>
               <button onClick={() => openAssign(r)} style={{ fontSize: 11, padding: "5px 10px", borderRadius: 6, border: "1px solid var(--hair-strong)", background: "var(--surface-alt)", color: "var(--ink-soft)", cursor: "pointer" }}>

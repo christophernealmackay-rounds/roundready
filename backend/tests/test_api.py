@@ -352,11 +352,22 @@ class TestQapis:
         qapis = r.json()
         active = [q for q in qapis if q["status"] == "active"]
         archived = [q for q in qapis if q["status"] == "archived"]
-        assert len(active) == 1
-        assert len(archived) == 3
-        # Active is Skin Integrity, has items with full QAPI fields populated
-        skin = active[0]
-        assert "Skin" in skin["title"]
+        assert len(active) >= 1
+        assert len(archived) >= 3
+        # Every archived QAPI must have an actual_completion date populated.
+        # Every active QAPI must have actual_completion = None. These are the
+        # invariants the archive validator enforces — verify both sides.
+        for q in archived:
+            assert q.get("actual_completion"), (
+                f"archived QAPI {q['title']!r} missing actual_completion"
+            )
+        for q in active:
+            assert q.get("actual_completion") is None, (
+                f"active QAPI {q['title']!r} unexpectedly has actual_completion"
+            )
+        # Skin Integrity should be active with 3 items in the seed.
+        skin = next((q for q in active if "Skin" in q["title"]), None)
+        assert skin is not None
         assert len(skin["items"]) == 3
         item = skin["items"][0]
         for key in ("root_cause", "systemic_change", "monitoring_type", "responsible"):
@@ -367,12 +378,78 @@ class TestQapis:
         assert r.status_code == 201
         qapi_id = r.json()["id"]
 
-        r2 = await client.patch(f"/api/v1/qapis/{qapi_id}", json={"status": "archived"})
-        assert r2.status_code == 200
-        assert r2.json()["status"] == "archived"
+        # Archive requires an actual_completion date; sending status alone
+        # must 422 before persisting any state change.
+        r2 = await client.patch(
+            f"/api/v1/qapis/{qapi_id}",
+            json={"status": "archived", "actual_completion": "2026-04-01"},
+        )
+        assert r2.status_code == 200, r2.text
+        body = r2.json()
+        assert body["status"] == "archived"
+        assert body["actual_completion"] == "2026-04-01"
 
         r3 = await client.delete(f"/api/v1/qapis/{qapi_id}")
         assert r3.status_code == 204
+
+    async def test_archive_requires_actual_completion(self, client: AsyncClient):
+        """Bare archive PATCH must be rejected. Adding the date succeeds.
+        Restoring back to active must clear the completion date."""
+        r = await client.post("/api/v1/qapis", json={"title": "Archive Test QAPI"})
+        assert r.status_code == 201
+        qapi_id = r.json()["id"]
+        try:
+            # Bare archive — 422.
+            r1 = await client.patch(
+                f"/api/v1/qapis/{qapi_id}", json={"status": "archived"}
+            )
+            assert r1.status_code == 422, r1.text
+            assert "actual_completion" in r1.text
+
+            # Archive with completion — 200, field round-trips.
+            r2 = await client.patch(
+                f"/api/v1/qapis/{qapi_id}",
+                json={"status": "archived", "actual_completion": "2026-04-15"},
+            )
+            assert r2.status_code == 200, r2.text
+            assert r2.json()["actual_completion"] == "2026-04-15"
+
+            # Restore — completion cleared.
+            r3 = await client.patch(
+                f"/api/v1/qapis/{qapi_id}", json={"status": "active"}
+            )
+            assert r3.status_code == 200, r3.text
+            assert r3.json()["status"] == "active"
+            assert r3.json()["actual_completion"] is None
+        finally:
+            await client.delete(f"/api/v1/qapis/{qapi_id}")
+
+    async def test_archive_uses_persisted_completion_when_status_alone_changes(
+        self, client: AsyncClient
+    ):
+        """Setting actual_completion in one PATCH, then status='archived' in
+        a separate PATCH, should succeed — the validator must read the
+        already-persisted completion date, not just the incoming body."""
+        r = await client.post("/api/v1/qapis", json={"title": "Two-step archive"})
+        assert r.status_code == 201
+        qapi_id = r.json()["id"]
+        try:
+            r1 = await client.patch(
+                f"/api/v1/qapis/{qapi_id}",
+                json={"actual_completion": "2026-03-20"},
+            )
+            assert r1.status_code == 200, r1.text
+            assert r1.json()["status"] == "active"
+            assert r1.json()["actual_completion"] == "2026-03-20"
+
+            r2 = await client.patch(
+                f"/api/v1/qapis/{qapi_id}", json={"status": "archived"}
+            )
+            assert r2.status_code == 200, r2.text
+            assert r2.json()["status"] == "archived"
+            assert r2.json()["actual_completion"] == "2026-03-20"
+        finally:
+            await client.delete(f"/api/v1/qapis/{qapi_id}")
 
 
 # ---------------------------------------------------------------------------

@@ -255,8 +255,12 @@ export async function updateQapi(
     status: Qapi['status'];
     issuesIdentified: string;
     dateIdentified: string | null;
+    actualCompletion: string | null;
   }>
 ): Promise<Qapi> {
+  // Pass `null` to clear actualCompletion (server distinguishes null from
+  // omitted via Pydantic model_fields_set). Pass `undefined` to leave it
+  // unchanged; JSON.stringify drops undefined keys.
   const res = await api.PATCH('/api/v1/qapis/{qapi_id}', {
     params: { path: { qapi_id: qapiId } },
     body: {
@@ -264,6 +268,7 @@ export async function updateQapi(
       status: input.status,
       issues_identified: input.issuesIdentified,
       date_identified: input.dateIdentified,
+      actual_completion: input.actualCompletion,
     },
   });
   return mapQapi(unwrap(res));

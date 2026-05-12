@@ -124,6 +124,10 @@ CREATE TABLE qapis (
   status            TEXT        NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived')),
   issues_identified TEXT        NOT NULL DEFAULT '',
   date_identified   DATE,
+  -- Populated when the QAPI is archived. Required by the API layer at
+  -- archive time (see app/api/v1/qapis.py::update_qapi). Cleared on restore.
+  -- No DB-level CHECK so existing rows can adopt the column without backfill.
+  actual_completion DATE,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

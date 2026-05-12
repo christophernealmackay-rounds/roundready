@@ -4,6 +4,7 @@ import { Plus, ChevronDown, ChevronRight, Archive, X, RotateCcw } from "lucide-r
 import { useQapiStore } from "@/lib/store/useQapiStore";
 import { useRoundsStore } from "@/lib/store/useRoundsStore";
 import { PageHero } from "@/components/ui";
+import { formatDate, todayIsoDate } from "@/lib/dates";
 import type { Qapi, QapiItem } from "@/lib/types";
 
 type SubTab = "QAPIs" | "Template" | "QAA Notes";
@@ -34,6 +35,10 @@ export default function QapiPage() {
     title: "", rootCause: "", systemicChange: "", monitoringType: "rounds" as QapiItem["monitoringType"],
     monitoringDetail: "", responsible: "", startDate: "", expectedCompletion: "",
   });
+  // Archive flow: capture actual completion date before sending to backend.
+  // The button only opens the modal — confirm in modal triggers the PATCH.
+  const [archiveTarget, setArchiveTarget] = useState<{ id: string; title: string } | null>(null);
+  const [archiveDate, setArchiveDate] = useState("");
 
   const activeQapis   = qapis.filter((q) => q.status === "active");
   const archivedQapis = qapis.filter((q) => q.status === "archived");
@@ -44,9 +49,27 @@ export default function QapiPage() {
 
   function saveAddQapi() {
     if (!addQapiForm.title.trim()) return;
-    addQapi({ title: addQapiForm.title, issuesIdentified: addQapiForm.issuesIdentified, dateIdentified: addQapiForm.dateIdentified || new Date().toISOString().split("T")[0], status: "active" });
+    addQapi({
+      title: addQapiForm.title,
+      issuesIdentified: addQapiForm.issuesIdentified,
+      dateIdentified: addQapiForm.dateIdentified || todayIsoDate(),
+      status: "active",
+      // New QAPIs are always active and have no completion date.
+      actualCompletion: null,
+    });
     setAddQapiOpen(false);
     setAddQapiForm({ title: "", issuesIdentified: "", dateIdentified: "" });
+  }
+
+  function openArchive(q: Qapi) {
+    setArchiveDate(todayIsoDate());
+    setArchiveTarget({ id: q.id, title: q.title });
+  }
+
+  function confirmArchive() {
+    if (!archiveTarget || !archiveDate) return;
+    archiveQapi(archiveTarget.id, archiveDate);
+    setArchiveTarget(null);
   }
 
   function saveAddItem() {
@@ -153,11 +176,17 @@ export default function QapiPage() {
                       </span>
                       {linkedCount > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: "1px 7px", borderRadius: 999, background: "var(--blue-tint)", color: "var(--blue)" }}>{linkedCount} template section{linkedCount !== 1 ? "s" : ""}</span>}
                     </div>
-                    <span style={{ fontSize: 11, color: "var(--muted)" }}>Identified {fmt(qapi.dateIdentified)} · {qapi.items.length} item{qapi.items.length !== 1 ? "s" : ""}</span>
+                    <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                      Identified {fmt(qapi.dateIdentified)}
+                      {qapi.status === "archived" && qapi.actualCompletion && (
+                        <> · Completed {formatDate(qapi.actualCompletion)}</>
+                      )}
+                      <> · {qapi.items.length} item{qapi.items.length !== 1 ? "s" : ""}</>
+                    </span>
                   </div>
                   <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 6 }}>
                     {qapi.status === "active" ? (
-                      <button onClick={() => archiveQapi(qapi.id)} style={{ fontSize: 11, padding: "5px 10px", borderRadius: 6, border: "1px solid var(--hair-strong)", background: "var(--surface-alt)", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                      <button onClick={() => openArchive(qapi)} style={{ fontSize: 11, padding: "5px 10px", borderRadius: 6, border: "1px solid var(--hair-strong)", background: "var(--surface-alt)", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
                         <Archive size={11} /> Archive
                       </button>
                     ) : (
@@ -338,6 +367,61 @@ export default function QapiPage() {
             }}
             placeholder="Record QAA committee meeting minutes, action items, and decisions here…"
           />
+        </div>
+      )}
+
+      {/* Archive QAPI Modal — captures the actual completion date, which
+          the backend now requires before allowing status='archived'. */}
+      {archiveTarget && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.45)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setArchiveTarget(null); }}
+        >
+          <div style={{ background: "var(--surface)", borderRadius: 16, padding: "24px 28px", width: 420, boxShadow: "var(--shadow-xl)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, gap: 12 }}>
+              <div>
+                <h2 style={{ fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 500, color: "var(--ink)" }}>Archive QAPI</h2>
+                <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>
+                  Mark <em style={{ fontFamily: "var(--font-display)", color: "var(--blue-ink)" }}>{archiveTarget.title}</em> as completed and move it to the archived list.
+                </p>
+              </div>
+              <button onClick={() => setArchiveTarget(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)" }}><X size={16} /></button>
+            </div>
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: "var(--muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                Actual completion date
+              </label>
+              <input
+                type="date"
+                value={archiveDate}
+                onChange={(e) => setArchiveDate(e.target.value)}
+                style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--hair-strong)", background: "var(--surface-alt)", fontSize: 13, color: "var(--ink)", outline: "none", fontFamily: "var(--font-mono)", boxSizing: "border-box" }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setArchiveTarget(null)} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--hair-strong)", background: "var(--surface)", color: "var(--ink-soft)", fontSize: 13, cursor: "pointer" }}>
+                Cancel
+              </button>
+              <button
+                onClick={confirmArchive}
+                disabled={!archiveDate}
+                style={{
+                  padding: "8px 18px",
+                  borderRadius: 8,
+                  border: "none",
+                  background: archiveDate ? "var(--blue)" : "var(--hair-strong)",
+                  color: "#fff",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: archiveDate ? "pointer" : "not-allowed",
+                  boxShadow: archiveDate ? "inset 0 1px 0 rgba(255,255,255,.18), 0 1px 2px rgba(7,43,82,.18)" : undefined,
+                }}
+              >
+                Archive QAPI
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

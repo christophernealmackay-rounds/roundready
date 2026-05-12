@@ -181,6 +181,7 @@ describe('mappers', () => {
       room: '101',
       bed: 'A',
       angel_id: 'a1',
+      original_angel_id: null,
       status: 'active',
       pcc_id: null,
     });
@@ -190,6 +191,7 @@ describe('mappers', () => {
       room: '101',
       bed: 'A',
       angelId: 'a1',
+      originalAngelId: null,
       status: 'active',
       pccId: undefined,
     });
@@ -202,10 +204,29 @@ describe('mappers', () => {
       room: '101',
       bed: 'A',
       angel_id: null,
+      original_angel_id: null,
       status: 'active',
       pcc_id: null,
     });
     expect(r.angelId).toBeNull();
+  });
+
+  it('exposes original_angel_id as originalAngelId for covering display', () => {
+    // When an angel is absent and their resident is being covered, the
+    // resident row carries both: angelId points at the cover, originalAngelId
+    // points at the permanent owner.
+    const r = mapResident({
+      id: 'r1',
+      name: 'Pearl Tomlinson',
+      room: '304',
+      bed: 'a',
+      angel_id: 'cover-angel',
+      original_angel_id: 'permanent-angel',
+      status: 'active',
+      pcc_id: null,
+    });
+    expect(r.angelId).toBe('cover-angel');
+    expect(r.originalAngelId).toBe('permanent-angel');
   });
 
   it('maps an angel DTO including department name', () => {

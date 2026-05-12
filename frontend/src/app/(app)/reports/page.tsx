@@ -9,7 +9,7 @@ import { useQapiStore } from "@/lib/store/useQapiStore";
 import { useResidentsStore } from "@/lib/store/useResidentsStore";
 import { useResidentGroupsStore } from "@/lib/store/useResidentGroupsStore";
 import GroupPills from "@/components/groups/GroupPills";
-import { todayEndOfDay } from "@/lib/dates";
+import { todayEndOfDay, todayIsoDate, formatDate } from "@/lib/dates";
 import { PageHero, SectionLabel, RefinedCard, KpiCard, RefinedTooltip, Pill } from "@/components/ui";
 
 type DateRange = "month" | "30" | "7" | "yesterday" | "custom";
@@ -52,12 +52,50 @@ export default function ReportsPage() {
   const [dateRange, setDateRange] = useState<DateRange>("month");
   const [selectedQapi, setSelectedQapi] = useState("All QAPIs");
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
+  // Custom date inputs — also used to display the resolved range in the
+  // generated report masthead when dateRange === 'custom'.
+  const [customStart, setCustomStart] = useState<string>("");
+  const [customEnd, setCustomEnd] = useState<string>("");
+  // Set true when the custom range was filled from a QAPI selection, so we
+  // can surface a small "Range set from selected QAPI" hint to the user.
+  const [rangeFromQapi, setRangeFromQapi] = useState(false);
 
-  // Apply ?qapi=<id> on mount/hydrate so dashboard click-through pre-filters.
+  // When a specific QAPI is selected, switch to a custom range that matches
+  // its lifecycle (date_identified through actual_completion, or today if
+  // still active). The user can override the dates after.
+  function applyQapiRange(title: string) {
+    if (title === "All QAPIs") {
+      setRangeFromQapi(false);
+      return;
+    }
+    const match = qapis.find((q) => q.title === title);
+    if (!match || !match.dateIdentified) {
+      setRangeFromQapi(false);
+      return;
+    }
+    setDateRange("custom");
+    setCustomStart(match.dateIdentified);
+    setCustomEnd(match.actualCompletion ?? todayIsoDate());
+    setRangeFromQapi(true);
+  }
+
+  function pickQapi(title: string) {
+    setSelectedQapi(title);
+    applyQapiRange(title);
+  }
+
+  // Apply ?qapi=<id> on mount/hydrate so dashboard click-through pre-filters
+  // the dropdown AND the date range.
   useEffect(() => {
     if (!qapiIdFromUrl) return;
     const match = qapis.find((q) => q.id === qapiIdFromUrl);
-    if (match) setSelectedQapi(match.title);
+    if (match) {
+      setSelectedQapi(match.title);
+      applyQapiRange(match.title);
+    }
+    // applyQapiRange is stable enough for this single-shot effect; intentionally
+    // not adding it to deps to avoid retriggering on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qapiIdFromUrl, qapis]);
 
   const activeResidents = residents.filter((r) => r.status === "active");
@@ -80,9 +118,26 @@ export default function ReportsPage() {
     { id: "custom",    label: "Custom range" },
   ];
 
+  // Resolve the effective date window. For pill ranges, defer to the
+  // module-level helpers. For "custom", parse the date input strings as
+  // local-time start-of-day / end-of-day so the inclusion check matches
+  // what a user expects to see in the inputs.
+  function effectiveStart(): Date {
+    if (dateRange === "custom" && customStart) {
+      return new Date(`${customStart}T00:00:00`);
+    }
+    return rangeStart(dateRange);
+  }
+  function effectiveEnd(): Date {
+    if (dateRange === "custom" && customEnd) {
+      return new Date(`${customEnd}T23:59:59`);
+    }
+    return rangeEnd(dateRange);
+  }
+
   const report = useMemo(() => {
-    const start = rangeStart(dateRange);
-    const end = rangeEnd(dateRange);
+    const start = effectiveStart();
+    const end = effectiveEnd();
 
     const groupMembers = groupFilter
       ? new Set(groups.find((g) => g.id === groupFilter)?.memberIds ?? [])
@@ -112,7 +167,12 @@ export default function ReportsPage() {
 
     // Per QAPI breakdown
     const activeTemplate = templates.find((t) => t.active && t.type === "angel");
-    const qapiBars = qapis.filter((q) => q.status === "active" && (selectedQapi === "All QAPIs" || q.title === selectedQapi)).map((qapi) => {
+    // Include archived QAPIs when explicitly selected — reports about
+    // completed PIPs are a primary use case for the new lifecycle flow.
+    // For "All QAPIs" keep the existing active-only filter.
+    const qapiBars = qapis.filter((q) =>
+      selectedQapi === "All QAPIs" ? q.status === "active" : q.title === selectedQapi
+    ).map((qapi) => {
       const sections = activeTemplate?.sections.filter((s) => s.qapiId === qapi.id) ?? [];
       const qIds = sections.flatMap((s) => s.questions.map((q) => q.questionId));
       const qapiAnswers = inRange.flatMap((r) => r.answers.filter((a) => qIds.includes(a.questionId)));
@@ -132,7 +192,7 @@ export default function ReportsPage() {
     }).filter((d) => d.yes + d.no > 0);
 
     return { rounds: inRange.length, rate: `${rate}%`, issues: issuesInRange.length, resolved, missed: 0, qapiBars, drilldown };
-  }, [completedRounds, issues, qapis, templates, questions, dateRange, selectedQapi, selectedResidents, groupFilter, groups]);
+  }, [completedRounds, issues, qapis, templates, questions, dateRange, customStart, customEnd, selectedQapi, selectedResidents, groupFilter, groups]);
 
   return (
     <div className="max-w-[1200px] mx-auto" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -199,11 +259,44 @@ export default function ReportsPage() {
             <SectionLabel accent="muted" style={{ marginBottom: 7 }}>Date range</SectionLabel>
             <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
               {dateRangePills.map((p) => (
-                <Pill key={p.id} active={dateRange === p.id} onClick={() => setDateRange(p.id)}>
+                <Pill
+                  key={p.id}
+                  active={dateRange === p.id}
+                  onClick={() => {
+                    setDateRange(p.id);
+                    // Picking any other pill drops the "from QAPI" badge —
+                    // the user is taking manual control of the window.
+                    if (p.id !== "custom") setRangeFromQapi(false);
+                  }}
+                >
                   {p.label}
                 </Pill>
               ))}
             </div>
+            {dateRange === "custom" && (
+              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    type="date"
+                    value={customStart}
+                    onChange={(e) => { setCustomStart(e.target.value); setRangeFromQapi(false); }}
+                    style={{ padding: "7px 10px", borderRadius: 7, border: "1px solid var(--hair-strong)", background: "var(--surface)", fontSize: 12, color: "var(--ink)", outline: "none", fontFamily: "var(--font-mono)", boxShadow: "var(--shadow-card)" }}
+                  />
+                  <span style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic", fontFamily: "var(--font-display)" }}>through</span>
+                  <input
+                    type="date"
+                    value={customEnd}
+                    onChange={(e) => { setCustomEnd(e.target.value); setRangeFromQapi(false); }}
+                    style={{ padding: "7px 10px", borderRadius: 7, border: "1px solid var(--hair-strong)", background: "var(--surface)", fontSize: 12, color: "var(--ink)", outline: "none", fontFamily: "var(--font-mono)", boxShadow: "var(--shadow-card)" }}
+                  />
+                </div>
+                {rangeFromQapi && (
+                  <span style={{ fontSize: 10.5, color: "var(--plum)", fontStyle: "italic", fontFamily: "var(--font-display)" }}>
+                    Range set from selected QAPI
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* QAPI */}
@@ -211,7 +304,7 @@ export default function ReportsPage() {
             <SectionLabel accent="muted" style={{ marginBottom: 7 }}>QAPI</SectionLabel>
             <select
               value={selectedQapi}
-              onChange={(e) => setSelectedQapi(e.target.value)}
+              onChange={(e) => pickQapi(e.target.value)}
               style={{
                 padding: "8px 12px",
                 borderRadius: 8,
@@ -225,7 +318,7 @@ export default function ReportsPage() {
               }}
             >
               <option>All QAPIs</option>
-              {qapis.filter((q) => q.status === "active").map((q) => <option key={q.id}>{q.title}</option>)}
+              {qapis.map((q) => <option key={q.id}>{q.title}</option>)}
             </select>
           </div>
 
@@ -370,7 +463,9 @@ export default function ReportsPage() {
               >
                 {selectedQapi === "All QAPIs" ? "All active QAPIs," : selectedQapi + ","}<br />
                 <em style={{ color: "var(--blue-ink)", fontStyle: "italic", fontWeight: 400 }}>
-                  {dateRangePills.find((p) => p.id === dateRange)?.label?.toLowerCase()}.
+                  {dateRange === "custom" && customStart && customEnd
+                    ? `${formatDate(customStart)} – ${formatDate(customEnd)}`
+                    : dateRangePills.find((p) => p.id === dateRange)?.label?.toLowerCase()}.
                 </em>
               </h2>
             </div>

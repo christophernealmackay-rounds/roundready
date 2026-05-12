@@ -41,3 +41,8 @@ Thumbs.db
 # Ad-hoc screenshots from manual / Playwright walkthroughs
 *.png
 !docs/**/*.png
+
+# Build-time artifact fetched by `npm run gen:api` from the running backend.
+# The committed source of truth is src/lib/api/schema.d.ts (the generated
+# types), not the raw OpenAPI JSON.
+frontend/openapi.json

@@ -125,6 +125,8 @@ QAPIS_ARCHIVED = [
         "title": "Fall Prevention Program",
         "issues_identified": "Fall rate exceeded benchmark in Q4 2025.",
         "date_offset_days": -90,
+        # Archived ~30 days after identification — typical PIP cycle length.
+        "complete_offset_days": -60,
         "items": [
             {"title": "Environment Safety Assessment",     "responsible": "Linda Reyes, Nursing",  "order": 0},
             {"title": "High-Risk Resident Identification", "responsible": "Marcus Tate, Therapy",  "order": 1},
@@ -134,6 +136,7 @@ QAPIS_ARCHIVED = [
         "title": "Pain Management & Assessment",
         "issues_identified": "Pain scores >=7 not consistently escalated to charge nurse.",
         "date_offset_days": -120,
+        "complete_offset_days": -90,
         "items": [
             {"title": "High Pain Score Response Protocol",  "responsible": "Jennifer Diaz, Therapy",   "order": 0},
             {"title": "Pain Documentation Completeness",    "responsible": "Tom Chen, Social Services","order": 1},
@@ -143,6 +146,7 @@ QAPIS_ARCHIVED = [
         "title": "Antipsychotic Reduction Initiative",
         "issues_identified": "Off-label antipsychotic use above CMS benchmark.",
         "date_offset_days": -180,
+        "complete_offset_days": -150,
         "items": [
             {"title": "Quarterly Behavior Health Review",   "responsible": "Rachel Park, Nursing",     "order": 0},
         ],
@@ -337,6 +341,8 @@ async def run_seed(conn: asyncpg.Connection) -> dict:
             uuid.UUID(qid), qapi["title"], "active",
             qapi["issues_identified"],
             today + dt.timedelta(days=qapi["date_offset_days"]),
+            # Active QAPIs have not completed yet.
+            None,
         ))
         for item in qapi["items"]:
             iid = _uuid()
@@ -362,6 +368,7 @@ async def run_seed(conn: asyncpg.Connection) -> dict:
             uuid.UUID(qid), qapi["title"], "archived",
             qapi["issues_identified"],
             today + dt.timedelta(days=qapi["date_offset_days"]),
+            today + dt.timedelta(days=qapi["complete_offset_days"]),
         ))
         for item in qapi["items"]:
             qapi_item_records.append((
@@ -373,7 +380,7 @@ async def run_seed(conn: asyncpg.Connection) -> dict:
     await conn.copy_records_to_table(
         "qapis",
         records=qapi_records,
-        columns=["id", "title", "status", "issues_identified", "date_identified"],
+        columns=["id", "title", "status", "issues_identified", "date_identified", "actual_completion"],
     )
     await conn.copy_records_to_table(
         "qapi_items",

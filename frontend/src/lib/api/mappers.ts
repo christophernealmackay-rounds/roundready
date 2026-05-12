@@ -61,6 +61,7 @@ export function mapResident(r: S['ResidentOut']): Resident {
     room: r.room,
     bed: r.bed,
     angelId: r.angel_id ?? null,
+    originalAngelId: r.original_angel_id ?? null,
     status: r.status as Resident['status'],
     pccId: r.pcc_id ?? undefined,
   };
@@ -88,6 +89,9 @@ export function mapQapi(q: S['QapiOut']): Qapi {
     title: q.title,
     issuesIdentified: q.issues_identified,
     dateIdentified: q.date_identified ?? '',
+    // Preserve null vs missing — empty string would conflate "no completion"
+    // with "completed but unknown date".
+    actualCompletion: q.actual_completion ?? null,
     status: q.status as Qapi['status'],
     items: (q.items ?? []).map(mapQapiItem),
   };

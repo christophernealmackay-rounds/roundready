@@ -18,7 +18,9 @@ interface QapiState {
   refresh: () => Promise<void>;
   addQapi: (q: Omit<Qapi, 'id' | 'items'>) => Promise<Qapi>;
   updateQapi: (q: Qapi) => Promise<Qapi>;
-  archiveQapi: (id: string) => Promise<Qapi>;
+  // actualCompletion is required to archive — the backend rejects archive
+  // PATCHes without it. UI must collect the date before calling.
+  archiveQapi: (id: string, actualCompletion: string) => Promise<Qapi>;
   restoreQapi: (id: string) => Promise<Qapi>;
   addItem: (
     qapiId: string,
@@ -60,19 +62,29 @@ export const useQapiStore = create<QapiState>((set) => ({
       status: q.status,
       issuesIdentified: q.issuesIdentified,
       dateIdentified: q.dateIdentified || null,
+      // Forward existing completion so a general edit doesn't accidentally
+      // clear it. archiveQapi/restoreQapi handle the transition cases.
+      actualCompletion: q.actualCompletion,
     });
     set((s) => ({ qapis: replace(s.qapis, updated) }));
     return updated;
   },
 
-  archiveQapi: async (id) => {
-    const updated = await apiUpdateQapi(id, { status: 'archived' });
+  archiveQapi: async (id, actualCompletion) => {
+    const updated = await apiUpdateQapi(id, {
+      status: 'archived',
+      actualCompletion,
+    });
     set((s) => ({ qapis: replace(s.qapis, updated) }));
     return updated;
   },
 
   restoreQapi: async (id) => {
-    const updated = await apiUpdateQapi(id, { status: 'active' });
+    // Send explicit null so the backend clears the persisted completion.
+    const updated = await apiUpdateQapi(id, {
+      status: 'active',
+      actualCompletion: null,
+    });
     set((s) => ({ qapis: replace(s.qapis, updated) }));
     return updated;
   },

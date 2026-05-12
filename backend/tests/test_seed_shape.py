@@ -79,6 +79,15 @@ class TestSeedShape:
         archived = await _count("qapis", "status = 'archived'")
         assert active + archived >= 4
         assert archived >= 3
+        # Every archived QAPI must have actual_completion populated — that's
+        # the new invariant enforced by the API and the seed pipeline.
+        archived_with_completion = await _count(
+            "qapis", "status = 'archived' AND actual_completion IS NOT NULL"
+        )
+        assert archived_with_completion == archived, (
+            f"{archived - archived_with_completion} archived QAPI(s) missing "
+            f"actual_completion"
+        )
 
     async def test_qapi_items(self):
         # 3 active items + 5 archived items at seed; custom additions inflate.

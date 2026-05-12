@@ -58,6 +58,9 @@ class QapiOut(BaseModel):
     status: str  # active | archived
     issues_identified: str = ""
     date_identified: datetime.date | None = None
+    # Populated only when the QAPI has been archived. Required by the route
+    # handler before status can move to 'archived'; cleared on restore.
+    actual_completion: datetime.date | None = None
     items: list[QapiItemOut] = []
 
     model_config = {"from_attributes": True}
@@ -74,3 +77,4 @@ class QapiUpdate(BaseModel):
     status: QapiStatus | None = None
     issues_identified: str | None = None
     date_identified: datetime.date | None = None
+    actual_completion: datetime.date | None = None

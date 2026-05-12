@@ -38,6 +38,10 @@ export interface Resident {
   room: string;
   bed: string;
   angelId: string | null;
+  // Non-null while the resident's permanent angel is absent. Points at the
+  // permanent owner; angelId during this period is the temporary cover (or
+  // null if uncovered).
+  originalAngelId: string | null;
   status: 'active' | 'discharged' | 'hospital';
   pccId?: string;
 }
@@ -61,6 +65,9 @@ export interface Qapi {
   title: string;
   issuesIdentified: string;
   dateIdentified: string;
+  // null when the QAPI has not been archived yet. Required on the server
+  // before status can transition to 'archived'; cleared on restore.
+  actualCompletion: string | null;
   status: 'active' | 'archived';
   items: QapiItem[];
 }

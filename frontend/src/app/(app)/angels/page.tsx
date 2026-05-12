@@ -27,11 +27,22 @@ export default function AngelsPage() {
   const [absentModal, setAbsentModal] = useState<Angel | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState({ userId: "", departmentId: "" });
-  const [redistributed, setRedistributed] = useState(false);
 
   const absentAngels = angels.filter((a) => a.absent);
   const activeAngels = angels.filter((a) => !a.absent);
   const depts = new Set(angels.map((a) => a.departmentId)).size;
+
+  // Banner state is derived from residents so it survives tab navigation
+  // and is correct after a hard refresh. A resident belongs to an absent
+  // angel when their originalAngelId points at one. If any such resident
+  // is still unassigned, the banner stays amber. Otherwise (and at least
+  // one is covered), it's green.
+  const absentAngelIds = new Set(absentAngels.map((a) => a.id));
+  const absentOwnedResidents = residents.filter(
+    (r) => r.originalAngelId && absentAngelIds.has(r.originalAngelId)
+  );
+  const pendingRedistribution = absentOwnedResidents.some((r) => r.angelId === null);
+  const fullyCovered = !pendingRedistribution && absentOwnedResidents.length > 0;
 
   const displayed = filter === "active" ? activeAngels : filter === "absent" ? absentAngels : angels;
 
@@ -110,16 +121,17 @@ export default function AngelsPage() {
         })}
       </div>
 
-      {/* Absent bar — soft amber gradient instead of flat tint */}
-      {absentAngels.length > 0 && (
+      {/* Absent bar — colour and call-to-action derive entirely from the
+          residents store, so it survives navigation and refresh. */}
+      {absentAngels.length > 0 && (pendingRedistribution || fullyCovered) && (
         <div
           className="luxe-reveal-stagger"
           style={{
             ["--i" as string]: 4,
-            background: redistributed
+            background: fullyCovered
               ? "linear-gradient(180deg, var(--green-tint), var(--green-pale))"
               : "linear-gradient(180deg, var(--amber-tint), var(--amber-pale))",
-            border: `1px solid ${redistributed ? "var(--green-edge)" : "var(--amber-edge)"}`,
+            border: `1px solid ${fullyCovered ? "var(--green-edge)" : "var(--amber-edge)"}`,
             borderRadius: 10,
             padding: "11px 14px",
             display: "flex",
@@ -130,16 +142,19 @@ export default function AngelsPage() {
             boxShadow: "inset 0 1px 0 rgba(255,255,255,.5)",
           }}
         >
-          <div style={{ fontSize: 12, color: redistributed ? "var(--green)" : "var(--amber)" }}>
-            {redistributed ? (
+          <div style={{ fontSize: 12, color: fullyCovered ? "var(--green)" : "var(--amber)" }}>
+            {fullyCovered ? (
               <><strong>Rounds redistributed.</strong> Absent angels&apos; residents have been reassigned to available angels. Go to <strong>Residents</strong> to review assignments.</>
             ) : (
               <><strong>{absentAngels.map((a) => a.name).join(", ")}</strong> {absentAngels.length === 1 ? "is" : "are"} marked absent today. Their residents are unassigned.</>
             )}
           </div>
-          {!redistributed && (
+          {pendingRedistribution && (
             <button
-              onClick={() => { redistribute(absentAngels[0].id); setRedistributed(true); }}
+              // The /redistribute endpoint redistributes every unassigned
+              // resident regardless of which absent angel id is passed, so
+              // one call covers all absent angels at once.
+              onClick={() => redistribute(absentAngels[0].id)}
               style={{
                 fontSize: 12,
                 fontWeight: 500,

@@ -11,6 +11,10 @@ class ResidentOut(BaseModel):
     room: str
     bed: str
     angel_id: UUID | None = None
+    # Set when an angel is marked absent (preserving the pre-absence
+    # assignment). Cleared on return-to-duty. While populated together with
+    # a non-null angel_id, the resident is being temporarily covered.
+    original_angel_id: UUID | None = None
     status: str  # active | discharged | hospital
     pcc_id: str | None = None
 

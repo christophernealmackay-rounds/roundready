@@ -138,7 +138,7 @@ export interface paths {
         put?: never;
         /**
          * Auto Assign
-         * @description Assign all active residents to angels sequentially by room (same room â same angel).
+         * @description Assign all active residents to angels sequentially by room (same room → same angel).
          */
         post: operations["auto_assign_api_v1_residents_auto_assign_post"];
         delete?: never;
@@ -411,7 +411,16 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Resolve Issue */
+        /**
+         * Resolve Issue
+         * @description Mark an issue resolved.
+         *
+         *     Mirrors the frontend `canResolve` guard so the API enforces it too:
+         *       - admin and charge_nurse can always resolve
+         *       - an angel can resolve only issues in their own department
+         *     The `resolved_by` user must exist and be active. Without this check,
+         *     the UI could be bypassed and an arbitrary user attributed.
+         */
         post: operations["resolve_issue_api_v1_issues__issue_id__resolve_post"];
         delete?: never;
         options?: never;
@@ -443,7 +452,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Templates */
+        /**
+         * List Templates
+         * @description List all templates. Phase 4.2 contract: any active RapidRound whose
+         *     end_date has passed gets auto-archived on retrieval, so admins don't
+         *     have to babysit a "Stop" button when the survey window naturally ends.
+         */
         get: operations["list_templates_api_v1_rounds_templates_get"];
         put?: never;
         /** Create Template */
@@ -855,8 +869,9 @@ export interface components {
             /**
              * Monitoring Type
              * @default rounds
+             * @enum {string}
              */
-            monitoring_type: string;
+            monitoring_type: "rounds" | "completion" | "cadence";
             /**
              * Monitoring Detail
              * @default
@@ -935,7 +950,7 @@ export interface components {
             /** Systemic Change */
             systemic_change?: string | null;
             /** Monitoring Type */
-            monitoring_type?: string | null;
+            monitoring_type?: ("rounds" | "completion" | "cadence") | null;
             /** Monitoring Detail */
             monitoring_detail?: string | null;
             /** Responsible */
@@ -965,6 +980,8 @@ export interface components {
             issues_identified: string;
             /** Date Identified */
             date_identified?: string | null;
+            /** Actual Completion */
+            actual_completion?: string | null;
             /**
              * Items
              * @default []
@@ -976,11 +993,13 @@ export interface components {
             /** Title */
             title?: string | null;
             /** Status */
-            status?: string | null;
+            status?: ("active" | "archived") | null;
             /** Issues Identified */
             issues_identified?: string | null;
             /** Date Identified */
             date_identified?: string | null;
+            /** Actual Completion */
+            actual_completion?: string | null;
         };
         /** QuestionCreate */
         QuestionCreate: {
@@ -994,8 +1013,9 @@ export interface components {
             /**
              * Issue On
              * @default either
+             * @enum {string}
              */
-            issue_on: string;
+            issue_on: "yes" | "no" | "either";
             /** Notify Department Id */
             notify_department_id?: string | null;
             /**
@@ -1032,7 +1052,7 @@ export interface components {
             /** Section */
             section?: string | null;
             /** Issue On */
-            issue_on?: string | null;
+            issue_on?: ("yes" | "no" | "either") | null;
             /** Notify Department Id */
             notify_department_id?: string | null;
             /** In Repository */
@@ -1081,8 +1101,9 @@ export interface components {
             /**
              * Type
              * @default custom
+             * @enum {string}
              */
-            type: string;
+            type: "wing" | "cart" | "custom";
             /** Facility Id */
             facility_id?: string | null;
         };
@@ -1115,7 +1136,7 @@ export interface components {
             /** Name */
             name?: string | null;
             /** Type */
-            type?: string | null;
+            type?: ("wing" | "cart" | "custom") | null;
         };
         /** ResidentOut */
         ResidentOut: {
@@ -1132,10 +1153,31 @@ export interface components {
             bed: string;
             /** Angel Id */
             angel_id?: string | null;
+            /** Original Angel Id */
+            original_angel_id?: string | null;
             /** Status */
             status: string;
             /** Pcc Id */
             pcc_id?: string | null;
+        };
+        /**
+         * RoundAnswerOut
+         * @description Lean answer payload bundled with a Round so the dashboard can compute
+         *     QAPI compliance client-side without a follow-up fetch per round.
+         */
+        RoundAnswerOut: {
+            /**
+             * Question Id
+             * Format: uuid
+             */
+            question_id: string;
+            /** Answer */
+            answer?: boolean | null;
+            /**
+             * Issue Flagged
+             * @default false
+             */
+            issue_flagged: boolean;
         };
         /** RoundAnswerSubmit */
         RoundAnswerSubmit: {
@@ -1189,6 +1231,11 @@ export interface components {
              * @default 0
              */
             flags_raised: number;
+            /**
+             * Answers
+             * @default []
+             */
+            answers: components["schemas"]["RoundAnswerOut"][];
         };
         /** RoundSubmit */
         RoundSubmit: {
@@ -1217,8 +1264,9 @@ export interface components {
             /**
              * Type
              * @default angel
+             * @enum {string}
              */
-            type: string;
+            type: "angel" | "rapid";
             /** Start Date */
             start_date?: string | null;
             /** End Date */
@@ -1353,8 +1401,11 @@ export interface components {
             name: string;
             /** Email */
             email: string;
-            /** Role */
-            role: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "admin" | "angel" | "charge_nurse" | "viewer";
             /** Department Id */
             department_id?: string | null;
             /**
@@ -1397,7 +1448,7 @@ export interface components {
             /** Email */
             email?: string | null;
             /** Role */
-            role?: string | null;
+            role?: ("admin" | "angel" | "charge_nurse" | "viewer") | null;
             /** Department Id */
             department_id?: string | null;
             /** Notification Prefs */
