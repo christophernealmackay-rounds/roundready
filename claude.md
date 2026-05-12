@@ -4,7 +4,7 @@
 
 - A web app designed for skilled nursing facilities – beautiful UI, clean, clinical, crisp.
 - The application is designed to prevent regulatory penalties related to QAPI’s.
-- It should have tabs across the top that allow a user to navigate through the various elements of the application, including a landing dashboard, Angels, Residents, Users, QAPI, Rounds, and Reports.
+- It should have tabs across the top that allow a user to navigate through the various elements of the application, including a landing dashboard, Angels, Residents, Issues, Users, QAPI, Rounds, and Reports.
 - It should have a settings gear in the upper right hand corner next to the user profile bubble in which various settings can be managed.
 - The QAPI tab should have three functionalities. 1) QAPI template, 2) List of current and archived QAPIs, 3) QAA Committee notes (this will be an open text document that allows facilities to take notes on QAA meeting minutes.
 - The dashboard will include data driven visuals regarding the following: 1) individual performance of angels and their rounding completion over time. A visual will show an aggregate number and another visual will show performance by individuals who have rounds assigned to them during the date selector on the top of the dashboard. 2) The dashboard will have KPI cards related to specific QAPI items. QAPI items will be linked to specific rounding questions from the rounds tab. Clicking on a QAPI item KPI card will immediately generate a report that shows relevant details including aggregated data pertaining to the rounding questions tied to that QAPI item.
@@ -19,10 +19,10 @@
 
 ## Technical details
 
-- Implemented as a modern NextJS app, client rendered.
-- No persistence in the demo. It should restart each time the server is opened.
+- Implemented as a modern Next.js app (App Router, client-rendered tabs) talking to a FastAPI backend over `/api/v1/*`.
+- Supabase Postgres is the database — state persists across reloads. `POST /api/v1/admin/seed-reset` (only mounted when `DEMO_MODE=true`) drops every table, recreates from `db/schema.sql`, and re-loads the demo fixture in a single asyncpg `COPY` transaction (~5s).
 - Use popular libraries
-- Utilize Supabase database for data seeding as needed. Ask me for supabase details when needed.
+- Supabase credentials live in `.env` (gitignored). Ask me for new credentials when needed.
 
 ## Color Scheme and Font
 
@@ -142,3 +142,43 @@ Font features: cv11, ss01, ss02 enabled on body; ss01 on logo.
 1.  Use latest versions of libraries and idiomatic approaches as of today.
 2.  Keep it simple – always keep it simple, do not over-engineer, keep defensive programming simple and only use when absolutely necessary. Focus on simplicity in design and code.
 3.  Be concise. Create a minimal README with no emojis ever.
+
+## Implementation Status (as of 2026-05-12)
+
+### Stack and layout
+- **Frontend:** Next.js 16 / React 19 / TypeScript / Tailwind v4 / Recharts / Zustand. Lives under `frontend/`. Entry: `frontend/src/app/(app)/<tab>/page.tsx`.
+- **Backend:** FastAPI / Python 3.12 / Pydantic v2 / asyncpg + PostgREST. Lives under `backend/`. Routes under `backend/app/api/v1/*`.
+- **DB:** Supabase Postgres. Schema source of truth is `db/schema.sql` (alembic is dormant — don't add migrations without explicit ask).
+- **Local dev:** `make backend-dev` + `make frontend-dev` (or `docker-compose up`). Backend needs `DEMO_MODE=true` for the seed-reset endpoint.
+
+### What is built
+
+| Surface | Status |
+|---|---|
+| 8 tabs (Dashboard, Angels, Residents, Issues, Users, QAPI, Rounds, Reports) | Live |
+| Topbar with refined gradient + tab nav + Settings slide-out panel | Live |
+| Visual primitives in `frontend/src/components/ui/` (`PageHero`, `RefinedCard`, `KpiCard`, `RefinedTooltip`, `Pill`, `SectionLabel`) | Reused across every tab |
+| Editorial-luxe design pass (Fraunces hero headings, plum accents, page-load reveal motion) | Applied across all tabs |
+| QAPI lifecycle: `date_identified` → `actual_completion` required to archive; restore clears the date | Live; archive modal collects the date; reports auto-fill date range from QAPI lifecycle |
+| Absence cycle: `residents.original_angel_id` preserves pre-absence assignment through redistribution → restore on return-to-duty | Live |
+| Residents tab "Covering" column shows temporary cover during absence | Live |
+| RapidRound auto-archive when `end_date` is past | Live |
+| Issue resolve authorization: API mirrors the frontend `canResolve` rule (admin / charge_nurse always; angel only when dept matches) | Live |
+| Pydantic `Literal` validation on every Postgres CHECK-constrained enum field (`role`, `issue_on`, template `type`, `qapi.status`, `qapi_items.monitoring_type`, `resident_groups.type`) | Live — bad input returns 422 with field-level errors |
+| `Field(min_length=1)` on every required free-text field (`resident.name`, `resident.room`, `question.text`, `department.name`) | Live |
+
+### Test suites
+- **Backend pytest:** 61 tests against the live Supabase project. Run via `make backend-test` or `python -m pytest backend -q`.
+- **Frontend vitest:** 22 tests. Run via `make frontend-test` or `cd frontend && npm test`.
+- Both suites are kept passing on every change. `npm run build` is also kept clean.
+
+### Source of truth for design + plans
+- `docs/plan.md` — original phase-by-phase plan. Phases 1–5 substantially complete; phase 6 partially (no Playwright suite yet); phase 7 not started.
+- `docs/test-plan.md` — manual / integration test plan, iteration-by-iteration audit log (16 bugs fixed, 35 tests added during the QA pass).
+- `docs/superpowers/specs/*` — feature design specs (editorial-luxe redesign, QAPI completion + report linkage).
+- `.claude/plans/*` — short-lived implementation plans, one per planning session. Safe to ignore once the work has shipped.
+
+### Conventions worth remembering
+- `frontend/openapi.json` is a build artifact (gitignored). The committed source of truth for typed API calls is `frontend/src/lib/api/schema.d.ts`, regenerated via `npm run gen:api` whenever backend schemas change.
+- "Today" in the UI flows through `frontend/src/lib/dates.ts` (`todayIsoDate`, `todayDisplay`, `formatDate`). Don't introduce new hardcoded `TODAY = "..."` constants.
+- The Pydantic PATCH-update convention is "skip None fields" — when a field needs to be force-cleared (e.g. `actual_completion` on QAPI restore), special-case it in the route. There's a worked example in `backend/app/api/v1/qapis.py::update_qapi`.
