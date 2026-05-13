@@ -42,7 +42,32 @@
       "Bash(wmic process *)",
       "PowerShell($exe = \"C:\\\\Users\\\\chris\\\\AppData\\\\Local\\\\Python\\\\bin\\\\python.exe\"; & $exe --version)",
       "PowerShell(Get-NetTCPConnection *)",
-      "PowerShell(Get-Process *)"
+      "PowerShell(Get-Process *)",
+      "PowerShell($ok = $false; for \\($i = 0; $i -lt 30; $i++\\) { try { $r = Invoke-WebRequest -Uri http://127.0.0.1:8000/api/v1/health -UseBasicParsing -TimeoutSec 1; if \\($r.StatusCode -eq 200\\) { $ok = $true; break } } catch {}; Start-Sleep -Milliseconds 500 }; \"$ok\")",
+      "PowerShell($ok = $false; for \\($i = 0; $i -lt 60; $i++\\) { try { $r = Invoke-WebRequest -Uri http://localhost:3000/dashboard -UseBasicParsing -TimeoutSec 1; if \\($r.StatusCode -eq 200\\) { $ok = $true; break } } catch {}; Start-Sleep -Milliseconds 500 }; \"$ok\")",
+      "PowerShell(cd C:\\\\Users\\\\chris\\\\projects\\\\roundready\\\\backend; $sw = [System.Diagnostics.Stopwatch]::StartNew\\(\\); & \"C:\\\\Users\\\\chris\\\\AppData\\\\Local\\\\Python\\\\bin\\\\python.exe\" -m scripts.reset_demo 2>&1 | Select-Object -Last 22; $sw.Stop\\(\\); \"ELAPSED: $\\($sw.Elapsed.TotalSeconds\\)s\")",
+      "PowerShell(cd C:\\\\Users\\\\chris\\\\projects\\\\roundready\\\\backend; $sw = [System.Diagnostics.Stopwatch]::StartNew\\(\\); & \"C:\\\\Users\\\\chris\\\\AppData\\\\Local\\\\Python\\\\bin\\\\python.exe\" -m scripts.reset_demo 2>&1 | Select-Object -Last 30; $sw.Stop\\(\\); \"ELAPSED: $\\($sw.Elapsed.TotalSeconds\\)s\")",
+      "PowerShell(cd C:\\\\Users\\\\chris\\\\projects\\\\roundready\\\\backend; $sw = [System.Diagnostics.Stopwatch]::StartNew\\(\\); & \"C:\\\\Users\\\\chris\\\\AppData\\\\Local\\\\Python\\\\bin\\\\python.exe\" -m scripts.reset_demo 2>&1 | Select-Object -Last 5; $sw.Stop\\(\\); \"ELAPSED: $\\($sw.Elapsed.TotalSeconds\\)s\")",
+      "PowerShell(cd C:\\\\Users\\\\chris\\\\projects\\\\roundready\\\\backend; $sw = [System.Diagnostics.Stopwatch]::StartNew\\(\\); & \"C:\\\\Users\\\\chris\\\\AppData\\\\Local\\\\Python\\\\bin\\\\python.exe\" -m scripts.reset_demo 2>&1 | Select-Object -Last 25; $sw.Stop\\(\\); \"ELAPSED: $\\($sw.Elapsed.TotalSeconds\\)s\")",
+      "PowerShell(Remove-Item *)",
+      "PowerShell(try { $r = Invoke-WebRequest http://localhost:3000/rounds -UseBasicParsing -TimeoutSec 30; \"rounds OK $\\($r.StatusCode\\)\" } catch { \"FAIL $\\($_.Exception.Message\\)\" })",
+      "Bash(make frontend-test *)",
+      "Bash(make backend-test *)",
+      "PowerShell(python -m pytest backend -q 2>&1 | Select-Object -Last 60)",
+      "PowerShell(& \"C:\\\\Users\\\\chris\\\\AppData\\\\Local\\\\Python\\\\bin\\\\python.exe\" -m pytest 'C:\\\\Users\\\\chris\\\\projects\\\\roundready\\\\backend' -q 2>&1 | Select-Object -Last 40)",
+      "PowerShell(try { Invoke-RestMethod -Uri 'http://localhost:8000/api/v1/health' -TimeoutSec 2 -ErrorAction Stop } catch { \"backend not up: $\\($_.Exception.Message\\)\" })",
+      "PowerShell(try { \\(Invoke-WebRequest -Uri 'http://localhost:3000/' -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop\\).StatusCode } catch { \"frontend not up\" })",
+      "PowerShell(Start-Process -FilePath \"C:\\\\Users\\\\chris\\\\AppData\\\\Local\\\\Python\\\\bin\\\\python.exe\" -ArgumentList \"-m\",\"uvicorn\",\"app.main:app\",\"--port\",\"8000\" -WorkingDirectory \"C:\\\\Users\\\\chris\\\\projects\\\\roundready\\\\backend\" -WindowStyle Hidden -PassThru | Select-Object Id)",
+      "PowerShell(try { Invoke-RestMethod 'http://127.0.0.1:8000/api/v1/health' -TimeoutSec 5 } catch { $_.Exception.Message })",
+      "Bash(gh pr *)",
+      "mcp__plugin_supabase_supabase__list_projects",
+      "mcp__plugin_supabase_supabase__apply_migration",
+      "mcp__plugin_playwright_playwright__browser_navigate",
+      "mcp__plugin_playwright_playwright__browser_evaluate",
+      "mcp__plugin_playwright_playwright__browser_snapshot",
+      "Bash(tasklist)",
+      "mcp__plugin_playwright_playwright__browser_wait_for",
+      "mcp__plugin_playwright_playwright__browser_click"
     ]
   }
 }
