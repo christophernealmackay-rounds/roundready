@@ -13,6 +13,7 @@ from app.api.v1.issues import router as issues_router
 from app.api.v1.rounds import router as rounds_router
 from app.api.v1.reports import router as reports_router
 from app.api.v1.qaa_notes import router as qaa_notes_router
+from app.api.v1.qaa_meeting_notes import router as qaa_meeting_notes_router
 from app.api.v1.admin import router as admin_router
 
 app = FastAPI(title="RoundReady API", version="1.0.0", docs_url="/docs")
@@ -38,4 +39,5 @@ app.include_router(issues_router,           prefix=PREFIX)
 app.include_router(rounds_router,           prefix=PREFIX)
 app.include_router(reports_router,          prefix=PREFIX)
 app.include_router(qaa_notes_router,        prefix=PREFIX)
+app.include_router(qaa_meeting_notes_router, prefix=PREFIX)
 app.include_router(admin_router,            prefix=PREFIX)

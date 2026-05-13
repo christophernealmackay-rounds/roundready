@@ -43,6 +43,11 @@ class RoundTemplateOut(BaseModel):
     start_date: datetime.date | None = None
     end_date: datetime.date | None = None
     archived_at: datetime.datetime | None = None
+    # Rapid rounds only: set when admin clicks "Deploy to Angels".
+    deployed_at: datetime.datetime | None = None
+    # Rapid rounds only: count of rounds submitted against this template.
+    # Cheap COUNT(*) computed in _build_template_out.
+    rapid_completion_count: int = 0
     sections: list[TemplateSectionOut] = []
 
     model_config = {"from_attributes": True}

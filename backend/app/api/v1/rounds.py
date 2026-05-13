@@ -57,7 +57,19 @@ async def _build_template_out(t: dict, db: DB) -> dict:
                 "order": tq["order"],
             })
         enriched_sections.append({**s, "questions": questions})
-    return {**t, "sections": enriched_sections}
+
+    # Rapid rounds expose a completion count so admins can see uptake at a
+    # glance after deploying. Cheap COUNT — only ever a handful of rapid
+    # templates exist at once, so a per-template SELECT is fine.
+    rapid_completion_count = 0
+    if t.get("type") == "rapid" and t.get("deployed_at"):
+        completed = await db.select(
+            "rounds",
+            {"template_id": f"eq.{t['id']}", "select": "id"},
+        )
+        rapid_completion_count = len(completed)
+
+    return {**t, "sections": enriched_sections, "rapid_completion_count": rapid_completion_count}
 
 
 @router.get("/templates", response_model=list[RoundTemplateOut])
@@ -147,6 +159,36 @@ async def delete_template(template_id: uuid.UUID, client: httpx.AsyncClient = De
     # template_sections + template_questions cascade via FK ON DELETE CASCADE.
     await db.delete("round_templates", {"id": str(template_id)})
     return None
+
+
+@router.post("/templates/{template_id}/deploy", response_model=RoundTemplateOut)
+async def deploy_template(template_id: uuid.UUID, client: httpx.AsyncClient = Depends(get_db)):
+    """Push a rapid round to angels.
+
+    Sets `deployed_at` to NOW(). The angel rounding view filters by
+    `deployed_at IS NOT NULL` (and type='rapid') to decide which rapid
+    templates to bundle into the angel's queue. Only valid for rapid
+    rounds — deploying an angel template would be meaningless since
+    angels always see the active angel template.
+    """
+    db = DB(client)
+    rows = await db.select("round_templates", {"id": f"eq.{template_id}"})
+    if not rows:
+        raise HTTPException(404, "Template not found")
+    t = rows[0]
+    if t.get("type") != "rapid":
+        raise HTTPException(422, "Only rapid rounds can be deployed to angels")
+    if t.get("deployed_at"):
+        # Idempotent: already deployed → return as-is rather than 409 so the
+        # UI can be optimistic without worrying about double-clicks.
+        return await _build_template_out(t, db)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    updated = await db.update(
+        "round_templates",
+        {"id": str(template_id)},
+        {"deployed_at": now_iso},
+    )
+    return await _build_template_out(updated, db)
 
 
 # ── Sections ───────────────────────────────────────────────────────────────

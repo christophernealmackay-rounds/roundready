@@ -28,6 +28,7 @@ DROP TABLE IF EXISTS residents                  CASCADE;
 DROP TABLE IF EXISTS angels                     CASCADE;
 DROP TABLE IF EXISTS users                      CASCADE;
 DROP TABLE IF EXISTS departments                CASCADE;
+DROP TABLE IF EXISTS qaa_meeting_notes          CASCADE;
 DROP TABLE IF EXISTS qaa_notes                  CASCADE;
 
 -- Old divergent tables from earlier seeding rounds; drop them too.
@@ -177,14 +178,17 @@ CREATE TABLE questions (
 -- Round templates (Angel Rounds + Rapid Rounds)
 -- =============================================================================
 CREATE TABLE round_templates (
-  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  name        TEXT        NOT NULL,
-  type        TEXT        NOT NULL CHECK (type IN ('angel','rapid')),
-  active      BOOLEAN     NOT NULL DEFAULT TRUE,
-  start_date  DATE,
-  end_date    DATE,
-  archived_at TIMESTAMPTZ,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  name         TEXT        NOT NULL,
+  type         TEXT        NOT NULL CHECK (type IN ('angel','rapid')),
+  active       BOOLEAN     NOT NULL DEFAULT TRUE,
+  start_date   DATE,
+  end_date     DATE,
+  archived_at  TIMESTAMPTZ,
+  -- Rapid rounds only: set when admin clicks "Deploy to Angels". NULL means
+  -- the rapid round is still being built and not yet visible to angels.
+  deployed_at  TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE template_sections (
@@ -272,6 +276,22 @@ CREATE TABLE qaa_notes (
 );
 
 -- =============================================================================
+-- QAA meeting notes (one row per committee meeting; replaces the singleton
+-- qaa_notes for everything except legacy compatibility).
+-- =============================================================================
+CREATE TABLE qaa_meeting_notes (
+  id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  facility_id   UUID,
+  meeting_date  DATE        NOT NULL,
+  title         TEXT        NOT NULL DEFAULT '',
+  content       TEXT        NOT NULL DEFAULT '',
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX qaa_meeting_notes_facility_date_idx
+  ON qaa_meeting_notes(facility_id, meeting_date DESC);
+
+-- =============================================================================
 -- Row Level Security
 -- =============================================================================
 ALTER TABLE departments                ENABLE ROW LEVEL SECURITY;
@@ -291,6 +311,7 @@ ALTER TABLE round_answers              ENABLE ROW LEVEL SECURITY;
 ALTER TABLE issues                     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE issue_notifications        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE qaa_notes                  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE qaa_meeting_notes          ENABLE ROW LEVEL SECURITY;
 
 -- Permissive policies (MVP). Backend uses service role which bypasses RLS;
 -- these policies exist so that any authenticated client (e.g., future
@@ -312,3 +333,4 @@ CREATE POLICY "auth_all" ON round_answers              FOR ALL TO authenticated 
 CREATE POLICY "auth_all" ON issues                     FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "auth_all" ON issue_notifications        FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "auth_all" ON qaa_notes                  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "auth_all" ON qaa_meeting_notes          FOR ALL TO authenticated USING (true) WITH CHECK (true);
