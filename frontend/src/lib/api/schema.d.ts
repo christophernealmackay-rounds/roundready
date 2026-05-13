@@ -486,6 +486,32 @@ export interface paths {
         patch: operations["update_template_api_v1_rounds_templates__template_id__patch"];
         trace?: never;
     };
+    "/api/v1/rounds/templates/{template_id}/deploy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deploy Template
+         * @description Push a rapid round to angels.
+         *
+         *     Sets `deployed_at` to NOW(). The angel rounding view filters by
+         *     `deployed_at IS NOT NULL` (and type='rapid') to decide which rapid
+         *     templates to bundle into the angel's queue. Only valid for rapid
+         *     rounds — deploying an angel template would be meaningless since
+         *     angels always see the active angel template.
+         */
+        post: operations["deploy_template_api_v1_rounds_templates__template_id__deploy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/rounds/templates/{template_id}/sections": {
         parameters: {
             query?: never;
@@ -610,6 +636,42 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/qaa-meeting-notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Notes */
+        get: operations["list_notes_api_v1_qaa_meeting_notes_get"];
+        put?: never;
+        /** Create Note */
+        post: operations["create_note_api_v1_qaa_meeting_notes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/qaa-meeting-notes/{note_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Note */
+        delete: operations["delete_note_api_v1_qaa_meeting_notes__note_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Note */
+        patch: operations["update_note_api_v1_qaa_meeting_notes__note_id__patch"];
         trace?: never;
     };
     "/api/v1/admin/seed-reset": {
@@ -817,6 +879,68 @@ export interface components {
             resolved_by: string;
             /** Resolution Notes */
             resolution_notes: string;
+        };
+        /** QaaMeetingNoteCreate */
+        QaaMeetingNoteCreate: {
+            /**
+             * Meeting Date
+             * Format: date
+             */
+            meeting_date: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+        };
+        /** QaaMeetingNoteOut */
+        QaaMeetingNoteOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Facility Id */
+            facility_id?: string | null;
+            /**
+             * Meeting Date
+             * Format: date
+             */
+            meeting_date: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** QaaMeetingNoteUpdate */
+        QaaMeetingNoteUpdate: {
+            /** Meeting Date */
+            meeting_date?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Content */
+            content?: string | null;
         };
         /** QaaNoteOut */
         QaaNoteOut: {
@@ -1338,6 +1462,13 @@ export interface components {
             end_date?: string | null;
             /** Archived At */
             archived_at?: string | null;
+            /** Deployed At */
+            deployed_at?: string | null;
+            /**
+             * Rapid Completion Count
+             * @default 0
+             */
+            rapid_completion_count: number;
             /**
              * Sections
              * @default []
@@ -2729,6 +2860,37 @@ export interface operations {
             };
         };
     };
+    deploy_template_api_v1_rounds_templates__template_id__deploy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoundTemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_section_api_v1_rounds_templates__template_id__sections_post: {
         parameters: {
             query?: never;
@@ -3036,6 +3198,123 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QaaNoteOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_notes_api_v1_qaa_meeting_notes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QaaMeetingNoteOut"][];
+                };
+            };
+        };
+    };
+    create_note_api_v1_qaa_meeting_notes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QaaMeetingNoteCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QaaMeetingNoteOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_note_api_v1_qaa_meeting_notes__note_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_note_api_v1_qaa_meeting_notes__note_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QaaMeetingNoteUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QaaMeetingNoteOut"];
                 };
             };
             /** @description Validation Error */

@@ -9,6 +9,7 @@ import {
   mapAngel,
   mapDepartment,
   mapIssue,
+  mapQaaMeetingNote,
   mapQaaNote,
   mapQapi,
   mapQapiItem,
@@ -24,6 +25,7 @@ import type {
   CompletedRound,
   Department,
   Issue,
+  QaaMeetingNote,
   QaaNotes,
   Qapi,
   QapiItem,
@@ -474,6 +476,14 @@ export async function deleteRoundTemplate(templateId: string): Promise<void> {
   unwrap(res);
 }
 
+export async function deployRoundTemplate(templateId: string): Promise<RoundTemplate> {
+  // Pushes a rapid round to angels. Server validates type='rapid'.
+  const res = await api.POST('/api/v1/rounds/templates/{template_id}/deploy', {
+    params: { path: { template_id: templateId } },
+  });
+  return mapRoundTemplate(unwrap(res));
+}
+
 export async function createTemplateSection(
   templateId: string,
   input: { title: string; qapiId?: string; qapiItemId?: string; order?: number }
@@ -603,6 +613,51 @@ export async function getQaaNotes(): Promise<QaaNotes> {
 export async function updateQaaNotes(content: string): Promise<QaaNotes> {
   const res = await api.PUT('/api/v1/qaa-notes', { body: { content } });
   return mapQaaNote(unwrap(res));
+}
+
+// ── QAA Meeting Notes (per-meeting entries) ─────────────────────────────────
+export async function listQaaMeetingNotes(): Promise<QaaMeetingNote[]> {
+  const res = await api.GET('/api/v1/qaa-meeting-notes');
+  return unwrap(res).map(mapQaaMeetingNote);
+}
+
+export async function createQaaMeetingNote(input: {
+  meetingDate: string;
+  title?: string;
+  content?: string;
+}): Promise<QaaMeetingNote> {
+  const res = await api.POST('/api/v1/qaa-meeting-notes', {
+    body: {
+      meeting_date: input.meetingDate,
+      title: input.title ?? '',
+      content: input.content ?? '',
+    },
+  });
+  return mapQaaMeetingNote(unwrap(res));
+}
+
+export async function updateQaaMeetingNote(
+  noteId: string,
+  input: Partial<{ meetingDate: string; title: string; content: string }>,
+): Promise<QaaMeetingNote> {
+  // PATCH: only send fields the caller actually set so we don't overwrite
+  // unrelated columns with defaults.
+  const body: Record<string, unknown> = {};
+  if ('meetingDate' in input) body.meeting_date = input.meetingDate;
+  if ('title' in input) body.title = input.title;
+  if ('content' in input) body.content = input.content;
+  const res = await api.PATCH('/api/v1/qaa-meeting-notes/{note_id}', {
+    params: { path: { note_id: noteId } },
+    body: body as never,
+  });
+  return mapQaaMeetingNote(unwrap(res));
+}
+
+export async function deleteQaaMeetingNote(noteId: string): Promise<void> {
+  const res = await api.DELETE('/api/v1/qaa-meeting-notes/{note_id}', {
+    params: { path: { note_id: noteId } },
+  });
+  unwrap(res);
 }
 
 // ── Admin ───────────────────────────────────────────────────────────────────

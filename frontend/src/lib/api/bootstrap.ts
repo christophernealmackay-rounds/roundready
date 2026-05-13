@@ -3,6 +3,7 @@ import {
   listAngels,
   listDepartments,
   listIssues,
+  listQaaMeetingNotes,
   listQapis,
   listQuestions,
   listResidentGroups,
@@ -25,6 +26,7 @@ export async function loadAll() {
     rounds,
     issues,
     qaaNotes,
+    meetingNotes,
   ] = await Promise.all([
     listDepartments(),
     listUsers(),
@@ -37,6 +39,7 @@ export async function loadAll() {
     listRounds(),
     listIssues(),
     getQaaNotes(),
+    listQaaMeetingNotes(),
   ]);
 
   return {
@@ -51,6 +54,7 @@ export async function loadAll() {
     rounds,
     issues,
     qaaNotes,
+    meetingNotes,
   };
 }
 

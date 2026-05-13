@@ -14,6 +14,7 @@ import {
   deleteQuestion,
   deleteRoundTemplate,
   deleteTemplateSection,
+  deployRoundTemplate,
   listQuestions,
   listRoundTemplates,
   listRounds,
@@ -35,10 +36,14 @@ interface RoundsState {
   }) => void;
   refresh: () => Promise<void>;
   addTemplate: (
-    t: Omit<RoundTemplate, 'id' | 'sections' | 'active' | 'archivedAt'>
+    t: Omit<
+      RoundTemplate,
+      'id' | 'sections' | 'active' | 'archivedAt' | 'deployedAt' | 'rapidCompletionCount'
+    >
   ) => Promise<RoundTemplate>;
   archiveTemplate: (id: string) => Promise<RoundTemplate>;
   deleteTemplate: (id: string) => Promise<void>;
+  deployTemplate: (id: string) => Promise<RoundTemplate>;
   addSection: (
     templateId: string,
     section: Omit<TemplateSection, 'id' | 'questions'>
@@ -119,6 +124,12 @@ export const useRoundsStore = create<RoundsState>((set) => ({
   deleteTemplate: async (id) => {
     await deleteRoundTemplate(id);
     set((s) => ({ templates: s.templates.filter((t) => t.id !== id) }));
+  },
+
+  deployTemplate: async (id) => {
+    const updated = await deployRoundTemplate(id);
+    set((s) => ({ templates: replaceTemplate(s.templates, updated) }));
+    return updated;
   },
 
   addSection: async (templateId, section) => {

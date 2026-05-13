@@ -38,6 +38,7 @@ export default function HydrationGate({
         useQapiStore.getState().hydrate({
           qapis: data.qapis,
           notes: data.qaaNotes,
+          meetingNotes: data.meetingNotes,
         });
         useRoundsStore.getState().hydrate({
           templates: data.templates,

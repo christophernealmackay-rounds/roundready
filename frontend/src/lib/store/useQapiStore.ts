@@ -1,20 +1,25 @@
 import { create } from 'zustand';
-import type { QaaNotes, Qapi, QapiItem } from '../types';
+import type { QaaMeetingNote, QaaNotes, Qapi, QapiItem } from '../types';
 import {
   createQapi,
   createQapiItem,
+  createQaaMeetingNote,
   deleteQapiItem,
+  deleteQaaMeetingNote,
   getQaaNotes,
   listQapis,
+  listQaaMeetingNotes,
   updateQapi as apiUpdateQapi,
   updateQapiItem as apiUpdateQapiItem,
+  updateQaaMeetingNote as apiUpdateQaaMeetingNote,
   updateQaaNotes,
 } from '../api';
 
 interface QapiState {
   qapis: Qapi[];
   notes: QaaNotes;
-  hydrate: (data: { qapis: Qapi[]; notes: QaaNotes }) => void;
+  meetingNotes: QaaMeetingNote[];
+  hydrate: (data: { qapis: Qapi[]; notes: QaaNotes; meetingNotes: QaaMeetingNote[] }) => void;
   refresh: () => Promise<void>;
   addQapi: (q: Omit<Qapi, 'id' | 'items'>) => Promise<Qapi>;
   updateQapi: (q: Qapi) => Promise<Qapi>;
@@ -29,6 +34,13 @@ interface QapiState {
   updateItem: (item: QapiItem) => Promise<QapiItem>;
   removeItem: (qapiId: string, itemId: string) => Promise<void>;
   updateNotes: (content: string) => Promise<void>;
+  // QAA per-meeting notes
+  addMeetingNote: (input: { meetingDate: string; title?: string; content?: string }) => Promise<QaaMeetingNote>;
+  updateMeetingNote: (
+    id: string,
+    patch: Partial<{ meetingDate: string; title: string; content: string }>,
+  ) => Promise<QaaMeetingNote>;
+  removeMeetingNote: (id: string) => Promise<void>;
 }
 
 function replace(qapis: Qapi[], updated: Qapi): Qapi[] {
@@ -38,12 +50,17 @@ function replace(qapis: Qapi[], updated: Qapi): Qapi[] {
 export const useQapiStore = create<QapiState>((set) => ({
   qapis: [],
   notes: { content: '', updatedAt: '' },
+  meetingNotes: [],
 
-  hydrate: ({ qapis, notes }) => set({ qapis, notes }),
+  hydrate: ({ qapis, notes, meetingNotes }) => set({ qapis, notes, meetingNotes }),
 
   refresh: async () => {
-    const [qapis, notes] = await Promise.all([listQapis(), getQaaNotes()]);
-    set({ qapis, notes });
+    const [qapis, notes, meetingNotes] = await Promise.all([
+      listQapis(),
+      getQaaNotes(),
+      listQaaMeetingNotes(),
+    ]);
+    set({ qapis, notes, meetingNotes });
   },
 
   addQapi: async (q) => {
@@ -128,5 +145,31 @@ export const useQapiStore = create<QapiState>((set) => ({
   updateNotes: async (content) => {
     const notes = await updateQaaNotes(content);
     set({ notes });
+  },
+
+  addMeetingNote: async (input) => {
+    const created = await createQaaMeetingNote(input);
+    // Insert in chronological order (meeting_date desc) to match the API's sort.
+    set((s) => ({
+      meetingNotes: [...s.meetingNotes, created].sort(
+        (a, b) => b.meetingDate.localeCompare(a.meetingDate),
+      ),
+    }));
+    return created;
+  },
+
+  updateMeetingNote: async (id, patch) => {
+    const updated = await apiUpdateQaaMeetingNote(id, patch);
+    set((s) => ({
+      meetingNotes: s.meetingNotes
+        .map((n) => (n.id === id ? updated : n))
+        .sort((a, b) => b.meetingDate.localeCompare(a.meetingDate)),
+    }));
+    return updated;
+  },
+
+  removeMeetingNote: async (id) => {
+    await deleteQaaMeetingNote(id);
+    set((s) => ({ meetingNotes: s.meetingNotes.filter((n) => n.id !== id) }));
   },
 }));

@@ -10,6 +10,7 @@ import type {
   Department,
   Issue,
   IssueNotification,
+  QaaMeetingNote,
   QaaNotes,
   Qapi,
   QapiItem,
@@ -149,6 +150,8 @@ export function mapRoundTemplate(t: S['RoundTemplateOut']): RoundTemplate {
     startDate: t.start_date ?? '',
     endDate: t.end_date ?? undefined,
     archivedAt: t.archived_at ?? undefined,
+    deployedAt: t.deployed_at ?? null,
+    rapidCompletionCount: t.rapid_completion_count ?? 0,
     sections: (t.sections ?? []).map(mapTemplateSection),
   };
 }
@@ -227,4 +230,16 @@ export function mapResidentGroup(g: S['ResidentGroupOut']): ResidentGroup {
 
 export function mapQaaNote(n: S['QaaNoteOut']): QaaNotes {
   return { content: n.content, updatedAt: n.updated_at };
+}
+
+export function mapQaaMeetingNote(n: S['QaaMeetingNoteOut']): QaaMeetingNote {
+  return {
+    id: n.id,
+    facilityId: n.facility_id ?? null,
+    meetingDate: n.meeting_date,
+    title: n.title ?? '',
+    content: n.content ?? '',
+    createdAt: n.created_at,
+    updatedAt: n.updated_at,
+  };
 }

@@ -77,6 +77,17 @@ export interface QaaNotes {
   updatedAt: string;
 }
 
+export interface QaaMeetingNote {
+  id: string;
+  facilityId: string | null;
+  // ISO date (YYYY-MM-DD) of the committee meeting.
+  meetingDate: string;
+  title: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type QuestionType = 'yesno' | 'scale';
 export type ThresholdDirection = 'gte' | 'lte';
 
@@ -129,6 +140,11 @@ export interface RoundTemplate {
   startDate: string;
   endDate?: string;
   archivedAt?: string;
+  // Rapid rounds only: timestamp the admin pushed it to angels.
+  // null/undefined means the rapid round is still being built.
+  deployedAt: string | null;
+  // Rapid rounds only: number of rounds submitted against this template.
+  rapidCompletionCount: number;
   sections: TemplateSection[];
 }
 
