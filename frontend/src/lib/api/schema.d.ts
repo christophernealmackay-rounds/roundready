@@ -1018,6 +1018,22 @@ export interface components {
             issue_on: "yes" | "no" | "either";
             /** Notify Department Id */
             notify_department_id?: string | null;
+            /** Department Id */
+            department_id?: string | null;
+            /**
+             * Type
+             * @default yesno
+             * @enum {string}
+             */
+            type: "yesno" | "scale";
+            /** Scale Min */
+            scale_min?: number | null;
+            /** Scale Max */
+            scale_max?: number | null;
+            /** Scale Threshold */
+            scale_threshold?: number | null;
+            /** Scale Threshold Direction */
+            scale_threshold_direction?: ("gte" | "lte") | null;
             /**
              * In Repository
              * @default false
@@ -1042,6 +1058,21 @@ export interface components {
             issue_on: string;
             /** Notify Department Id */
             notify_department_id?: string | null;
+            /** Department Id */
+            department_id?: string | null;
+            /**
+             * Type
+             * @default yesno
+             */
+            type: string;
+            /** Scale Min */
+            scale_min?: number | null;
+            /** Scale Max */
+            scale_max?: number | null;
+            /** Scale Threshold */
+            scale_threshold?: number | null;
+            /** Scale Threshold Direction */
+            scale_threshold_direction?: string | null;
             /** In Repository */
             in_repository: boolean;
         };
@@ -1055,6 +1086,18 @@ export interface components {
             issue_on?: ("yes" | "no" | "either") | null;
             /** Notify Department Id */
             notify_department_id?: string | null;
+            /** Department Id */
+            department_id?: string | null;
+            /** Type */
+            type?: ("yesno" | "scale") | null;
+            /** Scale Min */
+            scale_min?: number | null;
+            /** Scale Max */
+            scale_max?: number | null;
+            /** Scale Threshold */
+            scale_threshold?: number | null;
+            /** Scale Threshold Direction */
+            scale_threshold_direction?: ("gte" | "lte") | null;
             /** In Repository */
             in_repository?: boolean | null;
         };
@@ -1173,6 +1216,8 @@ export interface components {
             question_id: string;
             /** Answer */
             answer?: boolean | null;
+            /** Answer Number */
+            answer_number?: number | null;
             /**
              * Issue Flagged
              * @default false
@@ -1187,7 +1232,9 @@ export interface components {
              */
             question_id: string;
             /** Answer */
-            answer: boolean | null;
+            answer?: boolean | null;
+            /** Answer Number */
+            answer_number?: number | null;
             /**
              * Issue Flagged
              * @default false
@@ -1346,6 +1393,19 @@ export interface components {
             issue_on: string;
             /** Notify Department Id */
             notify_department_id?: string | null;
+            /**
+             * Type
+             * @default yesno
+             */
+            type: string;
+            /** Scale Min */
+            scale_min?: number | null;
+            /** Scale Max */
+            scale_max?: number | null;
+            /** Scale Threshold */
+            scale_threshold?: number | null;
+            /** Scale Threshold Direction */
+            scale_threshold_direction?: string | null;
             /** Order */
             order: number;
         };

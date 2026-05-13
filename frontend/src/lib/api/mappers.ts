@@ -104,6 +104,12 @@ export function mapQuestion(q: S['QuestionOut']): Question {
     section: q.section,
     issueOn: q.issue_on as Question['issueOn'],
     notifyDepartmentId: q.notify_department_id ?? '',
+    departmentId: q.department_id ?? '',
+    type: (q.type ?? 'yesno') as Question['type'],
+    scaleMin: q.scale_min ?? null,
+    scaleMax: q.scale_max ?? null,
+    scaleThreshold: q.scale_threshold ?? null,
+    scaleThresholdDirection: (q.scale_threshold_direction ?? null) as Question['scaleThresholdDirection'],
     inRepository: q.in_repository,
   };
 }
@@ -115,6 +121,11 @@ function mapTemplateQuestion(tq: S['TemplateQuestionOut']): TemplateQuestion {
     text: tq.text,
     issueOn: tq.issue_on as TemplateQuestion['issueOn'],
     notifyDepartmentId: tq.notify_department_id ?? '',
+    type: (tq.type ?? 'yesno') as TemplateQuestion['type'],
+    scaleMin: tq.scale_min ?? null,
+    scaleMax: tq.scale_max ?? null,
+    scaleThreshold: tq.scale_threshold ?? null,
+    scaleThresholdDirection: (tq.scale_threshold_direction ?? null) as TemplateQuestion['scaleThresholdDirection'],
     order: tq.order,
   };
 }
@@ -149,6 +160,7 @@ export function mapRound(r: S['RoundOut']): CompletedRound {
   const rawAnswers = (r as unknown as { answers?: Array<{
     question_id: string;
     answer: boolean | null;
+    answer_number?: number | null;
     issue_flagged: boolean;
   }> }).answers;
   return {
@@ -161,6 +173,7 @@ export function mapRound(r: S['RoundOut']): CompletedRound {
       ? rawAnswers.map((a) => ({
           questionId: a.question_id,
           answer: a.answer ?? null,
+          answerNumber: a.answer_number ?? null,
           issueFlagged: !!a.issue_flagged,
         }))
       : [],

@@ -52,13 +52,16 @@ export default function AngelRoundFlow({ template, onClose }: Props) {
   const [step, setStep] = useState<Step>("pick-resident");
   const [residentId, setResidentId] = useState<string>("");
   const [qIndex, setQIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, boolean>>({});
+  // Holds either a boolean (yes/no questions) or a number (scale questions),
+  // keyed by question id. Allows the angel to navigate back and forward
+  // without losing prior answers.
+  const [answers, setAnswers] = useState<Record<string, boolean | number>>({});
 
   const currentResident = residents.find((r) => r.id === residentId);
   const currentQuestion = allQuestions[qIndex];
   const totalQ = allQuestions.length;
 
-  function answer(value: boolean) {
+  function answer(value: boolean | number) {
     if (!currentQuestion) return;
     setAnswers((a) => ({ ...a, [currentQuestion.questionId]: value }));
     if (qIndex < totalQ - 1) setQIndex((i) => i + 1);
@@ -69,15 +72,24 @@ export default function AngelRoundFlow({ template, onClose }: Props) {
     setStep("submitting");
     const submission = allQuestions.map((q) => {
       const value = answers[q.questionId];
-      const flagged =
-        value === undefined
-          ? false
-          : q.issueOn === "either"
-            ? false
-            : (value && q.issueOn === "yes") || (!value && q.issueOn === "no");
+      let answerBool: boolean | null = null;
+      let answerNumber: number | null = null;
+      let flagged = false;
+      if (q.type === "scale" && typeof value === "number") {
+        answerNumber = value;
+        const t = q.scaleThreshold;
+        if (t != null) {
+          flagged = q.scaleThresholdDirection === "lte" ? value <= t : value >= t;
+        }
+      } else if (typeof value === "boolean") {
+        answerBool = value;
+        if (q.issueOn === "yes") flagged = value;
+        else if (q.issueOn === "no") flagged = !value;
+      }
       return {
         questionId: q.questionId,
-        answer: value ?? null,
+        answer: answerBool,
+        answerNumber,
         issueFlagged: flagged,
       };
     });
@@ -170,26 +182,37 @@ export default function AngelRoundFlow({ template, onClose }: Props) {
             {currentQuestion.text}
           </div>
           <div style={{ fontSize: 11, color: "var(--muted)" }}>
-            {currentQuestion.issueOn === "either"
-              ? "Informational — no automatic flag"
-              : `Flagging if ${currentQuestion.issueOn}`}
+            {currentQuestion.type === "scale" && currentQuestion.scaleThreshold != null
+              ? `Flag if ${currentQuestion.scaleThresholdDirection === "lte" ? "≤" : "≥"} ${currentQuestion.scaleThreshold}`
+              : currentQuestion.issueOn === "either"
+                ? "Informational — no automatic flag"
+                : `Flagging if ${currentQuestion.issueOn}`}
           </div>
         </div>
 
-        <div style={{ padding: "0 16px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-          <button
-            onClick={() => answer(true)}
-            style={tapBtn(value === true ? "var(--green)" : "var(--surface)", value === true ? "#fff" : "var(--ink)")}
-          >
-            Yes
-          </button>
-          <button
-            onClick={() => answer(false)}
-            style={tapBtn(value === false ? "var(--red)" : "var(--surface)", value === false ? "#fff" : "var(--ink)")}
-          >
-            No
-          </button>
-        </div>
+        {currentQuestion.type === "scale" ? (
+          <ScalePicker
+            min={currentQuestion.scaleMin ?? 1}
+            max={currentQuestion.scaleMax ?? 10}
+            value={typeof value === "number" ? value : undefined}
+            onPick={(n) => answer(n)}
+          />
+        ) : (
+          <div style={{ padding: "0 16px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+            <button
+              onClick={() => answer(true)}
+              style={tapBtn(value === true ? "var(--green)" : "var(--surface)", value === true ? "#fff" : "var(--ink)")}
+            >
+              Yes
+            </button>
+            <button
+              onClick={() => answer(false)}
+              style={tapBtn(value === false ? "var(--red)" : "var(--surface)", value === false ? "#fff" : "var(--ink)")}
+            >
+              No
+            </button>
+          </div>
+        )}
 
         <div style={{ padding: "0 16px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <button
@@ -309,4 +332,56 @@ function tapBtn(bg: string, color: string): React.CSSProperties {
     cursor: "pointer",
     boxShadow: "var(--shadow-sm)",
   };
+}
+
+function ScalePicker({
+  min,
+  max,
+  value,
+  onPick,
+}: {
+  min: number;
+  max: number;
+  value: number | undefined;
+  onPick: (n: number) => void;
+}) {
+  // Range can be wider than 1-10 (configurable), so flow-wrap with consistent
+  // square buttons. Selected value highlights in blue; the rest stay neutral.
+  const numbers: number[] = [];
+  for (let n = min; n <= max; n++) numbers.push(n);
+  return (
+    <div style={{ padding: "0 16px 12px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--muted)", marginBottom: 6 }}>
+        <span>Low ({min})</span>
+        <span>High ({max})</span>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {numbers.map((n) => {
+          const active = value === n;
+          return (
+            <button
+              key={n}
+              onClick={() => onPick(n)}
+              style={{
+                flex: "1 0 auto",
+                minWidth: 36,
+                height: 44,
+                borderRadius: 10,
+                border: `1px solid ${active ? "var(--blue)" : "var(--hair)"}`,
+                background: active ? "var(--blue)" : "var(--surface)",
+                color: active ? "#fff" : "var(--ink)",
+                fontSize: 15,
+                fontWeight: 600,
+                cursor: "pointer",
+                boxShadow: active ? "0 1px 2px rgba(7,43,82,.18)" : undefined,
+                transition: "all 0.1s",
+              }}
+            >
+              {n}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }

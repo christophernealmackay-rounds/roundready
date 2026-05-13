@@ -77,12 +77,23 @@ export interface QaaNotes {
   updatedAt: string;
 }
 
+export type QuestionType = 'yesno' | 'scale';
+export type ThresholdDirection = 'gte' | 'lte';
+
 export interface Question {
   id: string;
   text: string;
   section: string;
   issueOn: 'yes' | 'no' | 'either';
+  // Empty string ('') means "do not notify on flag". Backend stores it as null.
   notifyDepartmentId: string;
+  // Empty string ('') means "Uncategorized" in the repository grouping.
+  departmentId: string;
+  type: QuestionType;
+  scaleMin: number | null;
+  scaleMax: number | null;
+  scaleThreshold: number | null;
+  scaleThresholdDirection: ThresholdDirection | null;
   inRepository: boolean;
 }
 
@@ -94,6 +105,11 @@ export interface TemplateQuestion {
   text: string;
   issueOn: 'yes' | 'no' | 'either';
   notifyDepartmentId: string;
+  type: QuestionType;
+  scaleMin: number | null;
+  scaleMax: number | null;
+  scaleThreshold: number | null;
+  scaleThresholdDirection: ThresholdDirection | null;
   order: number;
 }
 
@@ -118,9 +134,11 @@ export interface RoundTemplate {
 
 export interface RoundAnswer {
   questionId: string;
-  // Null when the angel skipped the question (rare, but the API contract
-  // allows it). UI code that needs a boolean should coerce explicitly.
+  // Null when the angel skipped the question, or when this is a scale answer
+  // (numeric value lives in answerNumber instead).
   answer: boolean | null;
+  // Populated for scale questions; null for yes/no.
+  answerNumber: number | null;
   issueFlagged: boolean;
 }
 

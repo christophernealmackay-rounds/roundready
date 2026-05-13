@@ -148,8 +148,9 @@ export const useRoundsStore = create<RoundsState>((set) => ({
 
   addQuestion: async (templateId, sectionId, questionId) => {
     const created = await addQuestionToSection(sectionId, { questionId });
-    // The API returns text + question_id but not issueOn / notifyDepartmentId.
-    // Look those up from the in-memory question to keep the UI consistent.
+    // The API returns text + question_id but not the full question metadata.
+    // Hydrate the rest from the in-memory repository so the UI is consistent
+    // without an extra round-trip.
     const stored = useRoundsStore.getState().questions.find((q) => q.id === questionId);
     const tq: TemplateQuestion = {
       id: created.id,
@@ -157,6 +158,11 @@ export const useRoundsStore = create<RoundsState>((set) => ({
       text: created.text,
       issueOn: stored?.issueOn ?? 'either',
       notifyDepartmentId: stored?.notifyDepartmentId ?? '',
+      type: stored?.type ?? 'yesno',
+      scaleMin: stored?.scaleMin ?? null,
+      scaleMax: stored?.scaleMax ?? null,
+      scaleThreshold: stored?.scaleThreshold ?? null,
+      scaleThresholdDirection: stored?.scaleThresholdDirection ?? null,
       order: created.order,
     };
     set((s) => ({
@@ -195,6 +201,12 @@ export const useRoundsStore = create<RoundsState>((set) => ({
       section: q.section,
       issueOn: q.issueOn,
       notifyDepartmentId: q.notifyDepartmentId,
+      departmentId: q.departmentId,
+      type: q.type,
+      scaleMin: q.scaleMin,
+      scaleMax: q.scaleMax,
+      scaleThreshold: q.scaleThreshold,
+      scaleThresholdDirection: q.scaleThresholdDirection,
       inRepository: q.inRepository,
     });
     set((s) => ({ questions: [...s.questions, created] }));

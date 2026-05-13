@@ -34,15 +34,19 @@ import type {
   User,
 } from '../types';
 
-function unwrap<T>({ data, error }: { data?: T; error?: unknown }): T {
-  if (error || data === undefined) {
+export function unwrap<T>({ data, error }: { data?: T; error?: unknown }): T {
+  // 204 No-Content responses come back as {data: undefined, error: undefined}.
+  // Treat them as success — only an explicit `error` is a real failure.
+  // (The previous "data is undefined ⇒ throw" rule made every successful
+  // DELETE look like a failure to callers like removeQuestionFromSection.)
+  if (error !== undefined && error !== null) {
     throw new Error(
       typeof error === 'object' && error && 'detail' in error
         ? String((error as { detail: unknown }).detail)
         : 'API error'
     );
   }
-  return data;
+  return data as T;
 }
 
 // ── Departments ─────────────────────────────────────────────────────────────
@@ -345,6 +349,12 @@ export async function createQuestion(input: {
   section?: string;
   issueOn: Question['issueOn'];
   notifyDepartmentId?: string;
+  departmentId?: string;
+  type?: Question['type'];
+  scaleMin?: number | null;
+  scaleMax?: number | null;
+  scaleThreshold?: number | null;
+  scaleThresholdDirection?: Question['scaleThresholdDirection'];
   inRepository?: boolean;
 }): Promise<Question> {
   const res = await api.POST('/api/v1/questions', {
@@ -353,6 +363,12 @@ export async function createQuestion(input: {
       section: input.section ?? '',
       issue_on: input.issueOn,
       notify_department_id: input.notifyDepartmentId || null,
+      department_id: input.departmentId || null,
+      type: input.type ?? 'yesno',
+      scale_min: input.scaleMin ?? null,
+      scale_max: input.scaleMax ?? null,
+      scale_threshold: input.scaleThreshold ?? null,
+      scale_threshold_direction: input.scaleThresholdDirection ?? null,
       in_repository: input.inRepository ?? true,
     },
   });
@@ -366,18 +382,34 @@ export async function updateQuestion(
     section: string;
     issueOn: Question['issueOn'];
     notifyDepartmentId: string | null;
+    departmentId: string | null;
+    type: Question['type'];
+    scaleMin: number | null;
+    scaleMax: number | null;
+    scaleThreshold: number | null;
+    scaleThresholdDirection: Question['scaleThresholdDirection'];
     inRepository: boolean;
   }>
 ): Promise<Question> {
+  // PATCH: send only the keys the caller actually set. The backend uses
+  // exclude_unset semantics so any present key (including explicit null) is
+  // applied; omitted keys are left alone.
+  const body: Record<string, unknown> = {};
+  if ('text' in input) body.text = input.text;
+  if ('section' in input) body.section = input.section;
+  if ('issueOn' in input) body.issue_on = input.issueOn;
+  if ('notifyDepartmentId' in input) body.notify_department_id = input.notifyDepartmentId || null;
+  if ('departmentId' in input) body.department_id = input.departmentId || null;
+  if ('type' in input) body.type = input.type;
+  if ('scaleMin' in input) body.scale_min = input.scaleMin;
+  if ('scaleMax' in input) body.scale_max = input.scaleMax;
+  if ('scaleThreshold' in input) body.scale_threshold = input.scaleThreshold;
+  if ('scaleThresholdDirection' in input) body.scale_threshold_direction = input.scaleThresholdDirection;
+  if ('inRepository' in input) body.in_repository = input.inRepository;
+
   const res = await api.PATCH('/api/v1/questions/{question_id}', {
     params: { path: { question_id: questionId } },
-    body: {
-      text: input.text,
-      section: input.section,
-      issue_on: input.issueOn,
-      notify_department_id: input.notifyDepartmentId,
-      in_repository: input.inRepository,
-    },
+    body: body as never,
   });
   return mapQuestion(unwrap(res));
 }
@@ -514,7 +546,12 @@ export async function submitRound(input: {
   templateId: string;
   angelId: string;
   residentId: string;
-  answers: { questionId: string; answer: boolean | null; issueFlagged: boolean }[];
+  answers: {
+    questionId: string;
+    answer: boolean | null;
+    answerNumber: number | null;
+    issueFlagged: boolean;
+  }[];
 }): Promise<CompletedRound> {
   const res = await api.POST('/api/v1/rounds', {
     body: {
@@ -524,6 +561,7 @@ export async function submitRound(input: {
       answers: input.answers.map((a) => ({
         question_id: a.questionId,
         answer: a.answer,
+        answer_number: a.answerNumber,
         issue_flagged: a.issueFlagged,
       })),
     },
