@@ -6,6 +6,7 @@ import {
   Pencil,
   Play,
   Plus,
+  Send,
   Square,
   X,
   Zap,
@@ -64,6 +65,7 @@ export default function RoundsPage() {
     removeSection,
     addQuestion,
     removeQuestion,
+    deployTemplate,
   } = useRoundsStore();
   const qapis = useQapiStore((s) => s.qapis);
   const departments = useUsersStore((s) => s.departments);
@@ -441,24 +443,53 @@ export default function RoundsPage() {
         <>
           {activeRapidTemplate ? (
             <div style={{ background: "var(--surface)", border: "1px solid var(--blue-pale)", borderRadius: 12, padding: "16px 20px", boxShadow: "var(--shadow-sm)" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                     <Zap size={14} style={{ color: "var(--blue)" }} />
                     <span style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{activeRapidTemplate.name}</span>
                     <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 999, background: "var(--green-tint)", color: "var(--green)" }}>Active</span>
+                    {activeRapidTemplate.deployedAt && (
+                      <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 999, background: "var(--plum-tint)", color: "var(--plum)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        <Send size={9} /> Deployed
+                        {activeRapidTemplate.rapidCompletionCount > 0
+                          ? ` · ${activeRapidTemplate.rapidCompletionCount} round${activeRapidTemplate.rapidCompletionCount === 1 ? "" : "s"} in`
+                          : ""}
+                      </span>
+                    )}
                   </div>
                   <span style={{ fontSize: 11, color: "var(--muted)" }}>
                     Started {fmt(activeRapidTemplate.startDate)}
                     {activeRapidTemplate.endDate ? ` · ends ${fmt(activeRapidTemplate.endDate)}` : ""}
+                    {activeRapidTemplate.deployedAt ? ` · pushed to angels ${fmt(activeRapidTemplate.deployedAt)}` : ""}
                   </span>
                 </div>
-                <button
-                  onClick={() => archiveTemplate(activeRapidTemplate.id)}
-                  style={{ fontSize: 11, padding: "5px 10px", borderRadius: 6, border: "1px solid var(--red-edge)", background: "var(--red-tint)", color: "var(--red)", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
-                >
-                  <Square size={11} /> Stop
-                </button>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {!activeRapidTemplate.deployedAt && (
+                    <button
+                      onClick={() => {
+                        const totalQ = activeRapidTemplate.sections.reduce((n, s) => n + s.questions.length, 0);
+                        if (totalQ === 0) {
+                          alert("Add at least one question before deploying.");
+                          return;
+                        }
+                        if (window.confirm("Deploy this RapidRound to all angels? They will see it on their next round.")) {
+                          void deployTemplate(activeRapidTemplate.id);
+                        }
+                      }}
+                      style={{ fontSize: 11, padding: "6px 12px", borderRadius: 6, border: "none", background: "var(--blue)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontWeight: 500, boxShadow: "inset 0 1px 0 rgba(255,255,255,.18), 0 1px 2px rgba(7,43,82,.18)" }}
+                      title="Push this RapidRound to angels — they'll see its questions on their next round"
+                    >
+                      <Send size={11} /> Deploy to Angels
+                    </button>
+                  )}
+                  <button
+                    onClick={() => archiveTemplate(activeRapidTemplate.id)}
+                    style={{ fontSize: 11, padding: "5px 10px", borderRadius: 6, border: "1px solid var(--red-edge)", background: "var(--red-tint)", color: "var(--red)", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
+                  >
+                    <Square size={11} /> Stop
+                  </button>
+                </div>
               </div>
 
               {/* Sections in the rapid template (no QAPI grouping needed). */}
@@ -714,6 +745,11 @@ export default function RoundsPage() {
             <MobileFrame>
               <AngelRoundFlow
                 template={activeAngelTemplate}
+                // Deployed rapid rounds get appended to the angel's queue
+                // so a fresh round picks them up automatically.
+                rapidTemplates={templates.filter(
+                  (t) => t.active && t.type === "rapid" && !!t.deployedAt
+                )}
                 onClose={() => setRunOpen(false)}
               />
             </MobileFrame>

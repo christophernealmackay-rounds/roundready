@@ -196,3 +196,62 @@ body {
     animation: none;
   }
 }
+
+/* ─── QAA Notes — Print styles ──────────────────────────────────────────
+   The page renders a hidden .qaa-print-target sibling when the user clicks
+   "Print" or "Print all". Under @media print we flip visibility: hide every
+   normal app element and reveal only the print target. */
+.qaa-print-target {
+  display: none;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .qaa-print-target,
+  .qaa-print-target * {
+    visibility: visible;
+  }
+  .qaa-print-target {
+    display: block;
+    position: absolute;
+    inset: 0;
+    padding: 0.5in 0.6in;
+    color: #14171c;
+    background: #fff;
+    font-family: var(--font-display), Georgia, serif;
+  }
+  .qaa-print-title {
+    font-size: 22px;
+    font-weight: 500;
+    margin: 0 0 18px;
+    border-bottom: 1px solid #d6d1c3;
+    padding-bottom: 8px;
+  }
+  .qaa-print-entry {
+    page-break-inside: avoid;
+    margin-bottom: 22px;
+  }
+  .qaa-print-entry header {
+    margin-bottom: 10px;
+  }
+  .qaa-print-entry h2 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+  }
+  .qaa-print-meta {
+    font-size: 11px;
+    color: #6a6864;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    margin: 2px 0 0;
+  }
+  .qaa-print-content {
+    font-family: var(--font-display), Georgia, serif;
+    font-size: 12.5px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    margin: 0;
+  }
+}

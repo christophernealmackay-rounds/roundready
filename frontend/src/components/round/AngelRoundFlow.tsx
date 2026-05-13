@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, ChevronRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronRight, Zap } from "lucide-react";
 import { useAngelsStore } from "@/lib/store/useAngelsStore";
 import { useResidentsStore } from "@/lib/store/useResidentsStore";
 import { useRoundsStore } from "@/lib/store/useRoundsStore";
@@ -8,8 +8,22 @@ import type { RoundTemplate, TemplateQuestion } from "@/lib/types";
 
 type Step = "pick-resident" | "questions" | "submitting" | "done";
 
+// Question + its sourcing context. We dedup by questionId for the visible
+// flow (the angel sees each question once) but keep track of every template
+// that referenced it so submit can fan out to one round per template.
+type FlowQuestion = TemplateQuestion & {
+  primaryTemplateId: string;
+  primaryTemplateName: string;
+  // 'rapid' when the question's primary source is a deployed rapid round.
+  source: "angel" | "rapid";
+  templateIds: string[];
+};
+
 interface Props {
   template: RoundTemplate;
+  /** Deployed rapid rounds whose questions are appended to the angel's queue
+   *  with a "Rapid Round · {name}" badge. Empty by default. */
+  rapidTemplates?: RoundTemplate[];
   onClose: () => void;
 }
 
@@ -17,7 +31,7 @@ interface Props {
  * Angel-side rounding experience rendered inside <MobileFrame/>.
  * Flow: pick a resident → answer each question yes/no → submit.
  */
-export default function AngelRoundFlow({ template, onClose }: Props) {
+export default function AngelRoundFlow({ template, rapidTemplates = [], onClose }: Props) {
   const angels = useAngelsStore((s) => s.angels);
   const residents = useResidentsStore((s) => s.residents);
   const completeRound = useRoundsStore((s) => s.completeRound);
@@ -32,22 +46,37 @@ export default function AngelRoundFlow({ template, onClose }: Props) {
     [residents, angel]
   );
 
-  // Flatten across sections, but dedup by questionId so the angel only
-  // answers each question once even when the same question is linked into
-  // multiple QAPI sections (a Skin question might be tied to both the
-  // "Skin Inspection" and "Repositioning" QAPI items, for example).
-  const allQuestions: TemplateQuestion[] = useMemo(() => {
-    const seen = new Set<string>();
-    const out: TemplateQuestion[] = [];
-    for (const s of template.sections) {
-      for (const q of s.questions) {
-        if (seen.has(q.questionId)) continue;
-        seen.add(q.questionId);
-        out.push(q);
+  // Flatten across sections — angel template first, then each deployed rapid
+  // template in order. Dedup by questionId so the angel only answers a given
+  // question once even if it's linked into multiple sections/templates, but
+  // remember every template the question came from so submit can write a
+  // round for each. Rapid questions land at the bottom with a badge.
+  const allQuestions: FlowQuestion[] = useMemo(() => {
+    const seen = new Map<string, FlowQuestion>();
+    const order: string[] = [];
+    function ingest(t: RoundTemplate, source: "angel" | "rapid") {
+      for (const s of t.sections) {
+        for (const q of s.questions) {
+          const existing = seen.get(q.questionId);
+          if (existing) {
+            if (!existing.templateIds.includes(t.id)) existing.templateIds.push(t.id);
+            continue;
+          }
+          seen.set(q.questionId, {
+            ...q,
+            primaryTemplateId: t.id,
+            primaryTemplateName: t.name,
+            source,
+            templateIds: [t.id],
+          });
+          order.push(q.questionId);
+        }
       }
     }
-    return out;
-  }, [template]);
+    ingest(template, "angel");
+    for (const rt of rapidTemplates) ingest(rt, "rapid");
+    return order.map((id) => seen.get(id)!);
+  }, [template, rapidTemplates]);
 
   const [step, setStep] = useState<Step>("pick-resident");
   const [residentId, setResidentId] = useState<string>("");
@@ -70,7 +99,20 @@ export default function AngelRoundFlow({ template, onClose }: Props) {
   async function submit() {
     if (!angel || !residentId) return;
     setStep("submitting");
-    const submission = allQuestions.map((q) => {
+    // Build one submission per distinct template that referenced any of the
+    // questions the angel just answered. A question linked into both the
+    // angel template and a deployed rapid round gets recorded in both rounds.
+    const byTemplate = new Map<string, { templateId: string; answers: typeof submissionEntry[] }>();
+    type SubmissionEntry = {
+      questionId: string;
+      answer: boolean | null;
+      answerNumber: number | null;
+      issueFlagged: boolean;
+    };
+    // Type-only placeholder to give Map's value shape a name.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const submissionEntry: SubmissionEntry = { questionId: "", answer: null, answerNumber: null, issueFlagged: false };
+    for (const q of allQuestions) {
       const value = answers[q.questionId];
       let answerBool: boolean | null = null;
       let answerNumber: number | null = null;
@@ -86,21 +128,34 @@ export default function AngelRoundFlow({ template, onClose }: Props) {
         if (q.issueOn === "yes") flagged = value;
         else if (q.issueOn === "no") flagged = !value;
       }
-      return {
+      const entry: SubmissionEntry = {
         questionId: q.questionId,
         answer: answerBool,
         answerNumber,
         issueFlagged: flagged,
       };
-    });
+      for (const tid of q.templateIds) {
+        const bucket = byTemplate.get(tid) ?? { templateId: tid, answers: [] };
+        bucket.answers.push(entry);
+        byTemplate.set(tid, bucket);
+      }
+    }
     try {
-      await completeRound({
-        templateId: template.id,
-        angelId: angel.id,
-        residentId,
-        completedAt: new Date().toISOString(),
-        answers: submission,
-      });
+      // Fan out: one round per template. Submit angel template first so the
+      // dashboard ordering stays sensible.
+      const completedAt = new Date().toISOString();
+      const buckets = [...byTemplate.values()].sort((a) =>
+        a.templateId === template.id ? -1 : 1,
+      );
+      for (const bucket of buckets) {
+        await completeRound({
+          templateId: bucket.templateId,
+          angelId: angel.id,
+          residentId,
+          completedAt,
+          answers: bucket.answers,
+        });
+      }
       setStep("done");
     } catch {
       setStep("questions");
@@ -178,6 +233,24 @@ export default function AngelRoundFlow({ template, onClose }: Props) {
         </div>
 
         <div style={{ flex: 1, padding: "20px 18px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+          {currentQuestion.source === "rapid" && (
+            <div style={{
+              alignSelf: "flex-start",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              fontSize: 10,
+              fontWeight: 600,
+              padding: "3px 9px",
+              borderRadius: 999,
+              background: "var(--plum-tint)",
+              color: "var(--plum)",
+              marginBottom: 10,
+              letterSpacing: "0.02em",
+            }}>
+              <Zap size={10} /> Rapid Round · {currentQuestion.primaryTemplateName}
+            </div>
+          )}
           <div style={{ fontSize: 16, lineHeight: 1.4, fontWeight: 500, color: "var(--ink)", marginBottom: 6 }}>
             {currentQuestion.text}
           </div>

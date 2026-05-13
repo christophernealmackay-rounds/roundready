@@ -11,10 +11,12 @@ import { describe, expect, it } from 'vitest';
 import {
   mapAngel,
   mapIssue,
+  mapQaaMeetingNote,
   mapQuestion,
   mapResident,
   mapResidentGroup,
   mapRound,
+  mapRoundTemplate,
   mapUser,
 } from '@/lib/api/mappers';
 import { unwrap } from '@/lib/api/domain';
@@ -469,6 +471,74 @@ describe('mappers', () => {
   it('unwrap throws "API error" for opaque errors', () => {
     expect(() => unwrap({ data: undefined, error: 'boom' }))
       .toThrowError('API error');
+  });
+
+  it('mapRoundTemplate projects deployedAt and rapidCompletionCount', () => {
+    // A deployed rapid round carries the timestamp and an integer count;
+    // an angel template surfaces null + 0 since the fields are rapid-only.
+    const deployed = mapRoundTemplate({
+      id: 't-rapid',
+      name: 'Flu screen',
+      type: 'rapid',
+      active: true,
+      start_date: '2026-05-13',
+      end_date: '2026-05-20',
+      archived_at: null,
+      deployed_at: '2026-05-13T10:00:00Z',
+      rapid_completion_count: 4,
+      sections: [],
+    } as never);
+    expect(deployed.deployedAt).toBe('2026-05-13T10:00:00Z');
+    expect(deployed.rapidCompletionCount).toBe(4);
+    expect(deployed.type).toBe('rapid');
+
+    const angel = mapRoundTemplate({
+      id: 't-angel',
+      name: 'Skin integrity',
+      type: 'angel',
+      active: true,
+      start_date: '2026-04-10',
+      end_date: null,
+      archived_at: null,
+      deployed_at: null,
+      rapid_completion_count: 0,
+      sections: [],
+    } as never);
+    expect(angel.deployedAt).toBeNull();
+    expect(angel.rapidCompletionCount).toBe(0);
+  });
+
+  it('mapQaaMeetingNote round-trips per-meeting fields', () => {
+    const n = mapQaaMeetingNote({
+      id: 'mn-1',
+      facility_id: 'fac-1',
+      meeting_date: '2026-05-13',
+      title: 'May 2026 committee',
+      content: 'Attendees: …',
+      created_at: '2026-05-13T15:00:00Z',
+      updated_at: '2026-05-13T15:30:00Z',
+    });
+    expect(n.id).toBe('mn-1');
+    expect(n.facilityId).toBe('fac-1');
+    expect(n.meetingDate).toBe('2026-05-13');
+    expect(n.title).toBe('May 2026 committee');
+    expect(n.content).toBe('Attendees: …');
+    expect(n.updatedAt).toBe('2026-05-13T15:30:00Z');
+  });
+
+  it('mapQaaMeetingNote defaults title and content to empty strings', () => {
+    const n = mapQaaMeetingNote({
+      id: 'mn-2',
+      facility_id: null,
+      meeting_date: '2026-06-01',
+      title: null,
+      content: null,
+      created_at: '2026-06-01T00:00:00Z',
+      updated_at: '2026-06-01T00:00:00Z',
+    } as never);
+    expect(n.facilityId).toBeNull();
+    expect(n.title).toBe('');
+    expect(n.content).toBe('');
   });
 
   it('maps a resident group with member ids', () => {
