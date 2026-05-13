@@ -191,6 +191,11 @@ QUESTIONS = [
     # General
     {"text": "Visit notes captured for any clinically relevant observation?",        "section": "General",    "issue_on": "either", "department": "MDS"},
     {"text": "Family or POA contacted for any concerns flagged?",                    "section": "General",    "issue_on": "either", "department": "Social Services"},
+    # Scale questions — pain (flag if high) and meal satisfaction (flag if low)
+    {"text": "What is the resident's pain level (1-10)?",                            "section": "Pain",       "issue_on": "either", "department": "Nursing",
+     "type": "scale", "scale_min": 1, "scale_max": 10, "scale_threshold": 7, "scale_threshold_direction": "gte"},
+    {"text": "How would the resident rate meal satisfaction today (1-5)?",           "section": "Dietary",    "issue_on": "either", "department": "Dietary",
+     "type": "scale", "scale_min": 1, "scale_max": 5,  "scale_threshold": 2, "scale_threshold_direction": "lte"},
 ]
 
 QAA_NOTES_TEXT = """QAA Committee Meeting Minutes
@@ -402,19 +407,30 @@ async def run_seed(conn: asyncpg.Connection) -> dict:
         question_ids.append(qid)
         dept_id = dept_ids.get(q["department"])
         q_to_dept[qid] = dept_id
+        qtype = q.get("type", "yesno")
         question_records.append((
             uuid.UUID(qid),
             q["text"],
             q["section"],
             q["issue_on"],
             uuid.UUID(dept_id) if dept_id else None,
+            uuid.UUID(dept_id) if dept_id else None,  # department_id mirrors notify dept in seed
+            qtype,
+            q.get("scale_min"),
+            q.get("scale_max"),
+            q.get("scale_threshold"),
+            q.get("scale_threshold_direction"),
             True,
         ))
         questions_by_section.setdefault(q["section"], []).append((qid, q))
     await conn.copy_records_to_table(
         "questions",
         records=question_records,
-        columns=["id", "text", "section", "issue_on", "notify_department_id", "in_repository"],
+        columns=[
+            "id", "text", "section", "issue_on", "notify_department_id", "department_id",
+            "type", "scale_min", "scale_max", "scale_threshold", "scale_threshold_direction",
+            "in_repository",
+        ],
     )
 
     # ---- templates, sections, template_questions: build all rows then COPY ----
@@ -556,6 +572,7 @@ async def run_seed(conn: asyncpg.Connection) -> dict:
                         uuid.UUID(round_id),
                         uuid.UUID(qid),
                         answer,
+                        None,  # answer_number — null for yes/no questions
                         flagged,
                         completed_at,
                     ))
@@ -581,7 +598,7 @@ async def run_seed(conn: asyncpg.Connection) -> dict:
         await conn.copy_records_to_table(
             "round_answers",
             records=answers_buffer,
-            columns=["id", "round_id", "question_id", "answer", "issue_flagged", "created_at"],
+            columns=["id", "round_id", "question_id", "answer", "answer_number", "issue_flagged", "created_at"],
         )
 
     # ---- issues (cap to ~30 with realistic open/resolved split) ----

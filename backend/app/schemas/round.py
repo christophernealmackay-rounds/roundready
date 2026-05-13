@@ -14,6 +14,11 @@ class TemplateQuestionOut(BaseModel):
     section: str = ""
     issue_on: str
     notify_department_id: UUID | None = None
+    type: str = "yesno"
+    scale_min: int | None = None
+    scale_max: int | None = None
+    scale_threshold: int | None = None
+    scale_threshold_direction: str | None = None
     order: int
 
     model_config = {"from_attributes": True}
@@ -93,7 +98,8 @@ class TemplateQuestionCreate(BaseModel):
 
 class RoundAnswerSubmit(BaseModel):
     question_id: UUID
-    answer: bool | None
+    answer: bool | None = None
+    answer_number: int | None = None
     issue_flagged: bool = False
 
 
@@ -109,6 +115,7 @@ class RoundAnswerOut(BaseModel):
     QAPI compliance client-side without a follow-up fetch per round."""
     question_id: UUID
     answer: bool | None = None
+    answer_number: int | None = None
     issue_flagged: bool = False
 
     model_config = {"from_attributes": True}

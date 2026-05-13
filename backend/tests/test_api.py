@@ -482,6 +482,86 @@ class TestQuestions:
             assert q["in_repository"] is True
             assert q["issue_on"] in {"yes", "no", "either"}
 
+    async def test_scale_question_requires_all_scale_fields(self, client: AsyncClient):
+        """type=scale without min/max/threshold/direction must 422, not 500.
+        Without the validator a half-built scale row would land in Postgres
+        and trip the CHECK constraint as a 500 — bad UX and bad telemetry."""
+        r = await client.post(
+            "/api/v1/questions",
+            json={"text": "Pain?", "type": "scale", "scale_min": 1},
+        )
+        assert r.status_code == 422, r.text
+
+    async def test_scale_question_threshold_within_range(self, client: AsyncClient):
+        """threshold must be between min and max inclusive."""
+        r = await client.post(
+            "/api/v1/questions",
+            json={
+                "text": "Pain?", "type": "scale",
+                "scale_min": 1, "scale_max": 10,
+                "scale_threshold": 11, "scale_threshold_direction": "gte",
+            },
+        )
+        assert r.status_code == 422, r.text
+
+    async def test_yesno_question_rejects_scale_fields(self, client: AsyncClient):
+        """yes/no questions must not carry scale metadata; mixing them would
+        confuse the angel-side UI (does it show buttons or a scale picker?)."""
+        r = await client.post(
+            "/api/v1/questions",
+            json={
+                "text": "Skin OK?", "type": "yesno", "issue_on": "no",
+                "scale_min": 1, "scale_max": 10,
+            },
+        )
+        assert r.status_code == 422, r.text
+
+    async def test_scale_question_create_and_roundtrip(self, client: AsyncClient):
+        """Happy path: create a scale question, confirm GET round-trips the
+        scale metadata, then delete it."""
+        r = await client.post(
+            "/api/v1/questions",
+            json={
+                "text": "Test pain 1-10?", "type": "scale",
+                "scale_min": 1, "scale_max": 10,
+                "scale_threshold": 7, "scale_threshold_direction": "gte",
+                "in_repository": False,
+            },
+        )
+        assert r.status_code == 201, r.text
+        created = r.json()
+        assert created["type"] == "scale"
+        assert created["scale_min"] == 1
+        assert created["scale_max"] == 10
+        assert created["scale_threshold"] == 7
+        assert created["scale_threshold_direction"] == "gte"
+        # Cleanup so the test is idempotent against the live DB.
+        await client.delete(f"/api/v1/questions/{created['id']}")
+
+    async def test_notify_department_can_be_cleared_via_patch(self, client: AsyncClient):
+        """PATCH must accept an explicit null to clear notify_department_id.
+        Without exclude_unset semantics the field would be effectively
+        write-once and the user couldn't turn 'Notify on flag' back to No."""
+        # Pick any question that currently has a notify dept set.
+        questions = (await client.get("/api/v1/questions")).json()
+        target = next((q for q in questions if q.get("notify_department_id")), None)
+        assert target, "seed must include at least one question with notify dept"
+
+        original = target["notify_department_id"]
+        try:
+            r = await client.patch(
+                f"/api/v1/questions/{target['id']}",
+                json={"notify_department_id": None},
+            )
+            assert r.status_code == 200, r.text
+            assert r.json()["notify_department_id"] is None
+        finally:
+            # Restore so other tests that filter by notify dept aren't affected.
+            await client.patch(
+                f"/api/v1/questions/{target['id']}",
+                json={"notify_department_id": original},
+            )
+
 
 # ---------------------------------------------------------------------------
 # Issues
@@ -768,6 +848,157 @@ class TestRounds:
             f"expected exactly one new open issue: before={open_before}, "
             f"after={open_after}"
         )
+
+    async def test_round_submit_scale_flags_above_gte_threshold(
+        self, client: AsyncClient
+    ):
+        """Scale question with direction=gte, threshold=7: an answer of 8
+        must produce issue_flagged=true server-side regardless of what the
+        client sent. Mirror the canonical pain-scale demo."""
+        # Stand up a throwaway scale question; deleted in `finally`.
+        q_create = await client.post(
+            "/api/v1/questions",
+            json={
+                "text": "Test pain 1-10?", "type": "scale",
+                "scale_min": 1, "scale_max": 10,
+                "scale_threshold": 7, "scale_threshold_direction": "gte",
+                "in_repository": False,
+            },
+        )
+        assert q_create.status_code == 201, q_create.text
+        q = q_create.json()
+        try:
+            templates = (await client.get("/api/v1/rounds/templates")).json()
+            active = next(t for t in templates if t["type"] == "angel" and t["active"])
+            angels = (await client.get("/api/v1/angels")).json()
+            angel = next(a for a in angels if not a["absent"] and a["resident_count"] > 0)
+            residents = (await client.get("/api/v1/residents")).json()
+            resident = next(r for r in residents if r["angel_id"] == angel["id"])
+
+            r = await client.post(
+                "/api/v1/rounds",
+                json={
+                    "template_id": active["id"],
+                    "angel_id": angel["id"],
+                    "resident_id": resident["id"],
+                    "answers": [
+                        {
+                            "question_id": q["id"],
+                            "answer": None,
+                            "answer_number": 8,
+                            # Client lies and says no flag — server must override.
+                            "issue_flagged": False,
+                        },
+                    ],
+                },
+            )
+            assert r.status_code == 201, r.text
+            assert r.json()["flags_raised"] == 1, (
+                "server should have computed issue_flagged=True from threshold"
+            )
+        finally:
+            await client.delete(f"/api/v1/questions/{q['id']}")
+
+    async def test_round_submit_scale_does_not_flag_below_gte_threshold(
+        self, client: AsyncClient
+    ):
+        """Same scale (threshold=7, gte) but answer=5: no flag."""
+        q_create = await client.post(
+            "/api/v1/questions",
+            json={
+                "text": "Test pain low?", "type": "scale",
+                "scale_min": 1, "scale_max": 10,
+                "scale_threshold": 7, "scale_threshold_direction": "gte",
+                "in_repository": False,
+            },
+        )
+        assert q_create.status_code == 201, q_create.text
+        q = q_create.json()
+        try:
+            templates = (await client.get("/api/v1/rounds/templates")).json()
+            active = next(t for t in templates if t["type"] == "angel" and t["active"])
+            angels = (await client.get("/api/v1/angels")).json()
+            angel = next(a for a in angels if not a["absent"] and a["resident_count"] > 0)
+            residents = (await client.get("/api/v1/residents")).json()
+            resident = next(r for r in residents if r["angel_id"] == angel["id"])
+            r = await client.post(
+                "/api/v1/rounds",
+                json={
+                    "template_id": active["id"],
+                    "angel_id": angel["id"],
+                    "resident_id": resident["id"],
+                    "answers": [
+                        {
+                            "question_id": q["id"],
+                            "answer": None,
+                            "answer_number": 5,
+                            "issue_flagged": True,  # client lies; server ignores
+                        },
+                    ],
+                },
+            )
+            assert r.status_code == 201, r.text
+            assert r.json()["flags_raised"] == 0
+        finally:
+            await client.delete(f"/api/v1/questions/{q['id']}")
+
+    async def test_round_submit_scale_lte_direction(self, client: AsyncClient):
+        """Direction=lte covers low-is-bad metrics (meal satisfaction 1-5,
+        flag if ≤ 2). Answer=1 flags; answer=4 does not."""
+        q_create = await client.post(
+            "/api/v1/questions",
+            json={
+                "text": "Test meal 1-5?", "type": "scale",
+                "scale_min": 1, "scale_max": 5,
+                "scale_threshold": 2, "scale_threshold_direction": "lte",
+                "in_repository": False,
+            },
+        )
+        assert q_create.status_code == 201, q_create.text
+        q = q_create.json()
+        try:
+            templates = (await client.get("/api/v1/rounds/templates")).json()
+            active = next(t for t in templates if t["type"] == "angel" and t["active"])
+            angels = (await client.get("/api/v1/angels")).json()
+            angel = next(a for a in angels if not a["absent"] and a["resident_count"] > 0)
+            residents = (await client.get("/api/v1/residents")).json()
+            resident = next(r for r in residents if r["angel_id"] == angel["id"])
+
+            # Below threshold ⇒ flag
+            r = await client.post(
+                "/api/v1/rounds",
+                json={
+                    "template_id": active["id"],
+                    "angel_id": angel["id"],
+                    "resident_id": resident["id"],
+                    "answers": [{
+                        "question_id": q["id"],
+                        "answer": None, "answer_number": 1,
+                        "issue_flagged": False,
+                    }],
+                },
+            )
+            assert r.status_code == 201, r.text
+            assert r.json()["flags_raised"] == 1
+
+            # Above threshold ⇒ no flag
+            r2 = await client.post(
+                "/api/v1/rounds",
+                json={
+                    "template_id": active["id"],
+                    "angel_id": angel["id"],
+                    "resident_id": resident["id"],
+                    "answers": [{
+                        "question_id": q["id"],
+                        "answer": None, "answer_number": 4,
+                        "issue_flagged": False,
+                    }],
+                },
+            )
+            assert r2.status_code == 201, r2.text
+            assert r2.json()["flags_raised"] == 0
+        finally:
+            await client.delete(f"/api/v1/questions/{q['id']}")
 
     async def test_template_create_rejects_inverted_dates(
         self, client: AsyncClient

@@ -49,6 +49,11 @@ async def _build_template_out(t: dict, db: DB) -> dict:
                 "section": q.get("section", ""),
                 "issue_on": q["issue_on"],
                 "notify_department_id": q.get("notify_department_id"),
+                "type": q.get("type", "yesno"),
+                "scale_min": q.get("scale_min"),
+                "scale_max": q.get("scale_max"),
+                "scale_threshold": q.get("scale_threshold"),
+                "scale_threshold_direction": q.get("scale_threshold_direction"),
                 "order": tq["order"],
             })
         enriched_sections.append({**s, "questions": questions})
@@ -207,6 +212,11 @@ async def update_section(
                 "section": q.get("section", ""),
                 "issue_on": q["issue_on"],
                 "notify_department_id": q.get("notify_department_id"),
+                "type": q.get("type", "yesno"),
+                "scale_min": q.get("scale_min"),
+                "scale_max": q.get("scale_max"),
+                "scale_threshold": q.get("scale_threshold"),
+                "scale_threshold_direction": q.get("scale_threshold_direction"),
                 "order": tq["order"],
             })
     return {**section, "questions": questions}
@@ -255,6 +265,11 @@ async def add_question_to_section(
         "section": q.get("section", ""),
         "issue_on": q["issue_on"],
         "notify_department_id": q.get("notify_department_id"),
+        "type": q.get("type", "yesno"),
+        "scale_min": q.get("scale_min"),
+        "scale_max": q.get("scale_max"),
+        "scale_threshold": q.get("scale_threshold"),
+        "scale_threshold_direction": q.get("scale_threshold_direction"),
         "order": tq["order"],
     }
 
@@ -371,19 +386,47 @@ async def submit_round(body: RoundSubmit, client: httpx.AsyncClient = Depends(ge
     })
 
     flags_raised = 0
+    # Pre-fetch every question referenced in this submission so we can compute
+    # issue_flagged authoritatively server-side (clients can lie or get stale).
+    referenced_ids = list({str(a.question_id) for a in body.answers})
+    q_lookup: dict[str, dict] = {}
+    if referenced_ids:
+        ids_csv = ",".join(referenced_ids)
+        q_rows = await db.select("questions", {"id": f"in.({ids_csv})"})
+        q_lookup = {r["id"]: r for r in q_rows}
+
     for ans in body.answers:
+        q = q_lookup.get(str(ans.question_id), {})
+        qtype = q.get("type", "yesno")
+
+        # Authoritative flag computation. For yes/no: matches AngelRoundFlow.
+        # For scale: threshold + direction from the question definition.
+        flagged = False
+        if qtype == "scale" and ans.answer_number is not None:
+            threshold = q.get("scale_threshold")
+            direction = q.get("scale_threshold_direction")
+            if threshold is not None and direction == "gte":
+                flagged = ans.answer_number >= threshold
+            elif threshold is not None and direction == "lte":
+                flagged = ans.answer_number <= threshold
+        elif qtype == "yesno" and ans.answer is not None:
+            issue_on = q.get("issue_on", "either")
+            if issue_on == "yes":
+                flagged = bool(ans.answer)
+            elif issue_on == "no":
+                flagged = not bool(ans.answer)
+
         await db.insert("round_answers", {
             "id": str(uuid.uuid4()),
             "round_id": round_id,
             "question_id": str(ans.question_id),
             "answer": ans.answer,
-            "issue_flagged": ans.issue_flagged,
+            "answer_number": ans.answer_number,
+            "issue_flagged": flagged,
         })
-        if ans.issue_flagged:
+        if flagged:
             flags_raised += 1
-            # Look up notify_department_id on the question
-            qrows = await db.select("questions", {"id": f"eq.{ans.question_id}"})
-            dept_id = qrows[0].get("notify_department_id") if qrows else None
+            dept_id = q.get("notify_department_id")
             issue_id = str(uuid.uuid4())
             await db.insert("issues", {
                 "id": issue_id,

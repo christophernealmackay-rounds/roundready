@@ -151,13 +151,26 @@ CREATE INDEX qapi_items_qapi_idx ON qapi_items(qapi_id);
 -- Questions (repository + custom)
 -- =============================================================================
 CREATE TABLE questions (
-  id                   UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  text                 TEXT        NOT NULL,
-  section              TEXT        NOT NULL DEFAULT '',
-  issue_on             TEXT        NOT NULL DEFAULT 'either' CHECK (issue_on IN ('yes','no','either')),
-  notify_department_id UUID        REFERENCES departments(id) ON DELETE SET NULL,
-  in_repository        BOOLEAN     NOT NULL DEFAULT FALSE,
-  created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id                         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  text                       TEXT        NOT NULL,
+  section                    TEXT        NOT NULL DEFAULT '',
+  issue_on                   TEXT        NOT NULL DEFAULT 'either' CHECK (issue_on IN ('yes','no','either')),
+  notify_department_id       UUID        REFERENCES departments(id) ON DELETE SET NULL,
+  department_id              UUID        REFERENCES departments(id) ON DELETE SET NULL,
+  type                       TEXT        NOT NULL DEFAULT 'yesno' CHECK (type IN ('yesno','scale')),
+  scale_min                  INTEGER,
+  scale_max                  INTEGER,
+  scale_threshold            INTEGER,
+  scale_threshold_direction  TEXT        CHECK (scale_threshold_direction IN ('gte','lte')),
+  in_repository              BOOLEAN     NOT NULL DEFAULT FALSE,
+  created_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT scale_fields_complete CHECK (
+    type = 'yesno'
+    OR (scale_min IS NOT NULL AND scale_max IS NOT NULL
+        AND scale_threshold IS NOT NULL AND scale_threshold_direction IS NOT NULL
+        AND scale_min < scale_max
+        AND scale_threshold BETWEEN scale_min AND scale_max)
+  )
 );
 
 -- =============================================================================
@@ -214,6 +227,7 @@ CREATE TABLE round_answers (
   round_id      UUID        NOT NULL REFERENCES rounds(id) ON DELETE CASCADE,
   question_id   UUID        NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
   answer        BOOLEAN,
+  answer_number INTEGER,
   issue_flagged BOOLEAN     NOT NULL DEFAULT FALSE,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
