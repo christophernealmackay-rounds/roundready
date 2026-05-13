@@ -11,11 +11,14 @@ import { describe, expect, it } from 'vitest';
 import {
   mapAngel,
   mapIssue,
+  mapQuestion,
   mapResident,
   mapResidentGroup,
   mapRound,
   mapUser,
 } from '@/lib/api/mappers';
+import { unwrap } from '@/lib/api/domain';
+import { findDuplicateDepartment } from '@/app/(app)/rounds/page';
 import { todayIsoDate, todayEndOfDay, todayStartOfDay, formatDate } from '@/lib/dates';
 import type { CompletedRound } from '@/lib/types';
 
@@ -305,7 +308,7 @@ describe('mappers', () => {
       ],
     } as never);
     expect(r.answers).toHaveLength(3);
-    expect(r.answers[0]).toEqual({ questionId: 'q1', answer: true, issueFlagged: false });
+    expect(r.answers[0]).toEqual({ questionId: 'q1', answer: true, answerNumber: null, issueFlagged: false });
     expect(r.answers[1].issueFlagged).toBe(true);
     expect(r.answers[2].answer).toBeNull();
   });
@@ -350,6 +353,122 @@ describe('mappers', () => {
       active: true,
     });
     expect(u.departmentId).toBe('');
+  });
+
+  it('maps a yes/no question with default fields', () => {
+    const q = mapQuestion({
+      id: 'q1',
+      text: 'Skin intact?',
+      section: 'Skin Inspection',
+      issue_on: 'no',
+      notify_department_id: 'd1',
+      department_id: 'd1',
+      type: 'yesno',
+      scale_min: null,
+      scale_max: null,
+      scale_threshold: null,
+      scale_threshold_direction: null,
+      in_repository: true,
+    });
+    expect(q.type).toBe('yesno');
+    expect(q.departmentId).toBe('d1');
+    expect(q.scaleMin).toBeNull();
+    expect(q.scaleThreshold).toBeNull();
+    expect(q.scaleThresholdDirection).toBeNull();
+    expect(q.notifyDepartmentId).toBe('d1');
+  });
+
+  it('maps a scale question and round-trips scale metadata', () => {
+    const q = mapQuestion({
+      id: 'q2',
+      text: 'Pain level 1-10?',
+      section: 'Pain',
+      issue_on: 'either',
+      notify_department_id: 'd-nursing',
+      department_id: 'd-nursing',
+      type: 'scale',
+      scale_min: 1,
+      scale_max: 10,
+      scale_threshold: 7,
+      scale_threshold_direction: 'gte',
+      in_repository: true,
+    });
+    expect(q.type).toBe('scale');
+    expect(q.scaleMin).toBe(1);
+    expect(q.scaleMax).toBe(10);
+    expect(q.scaleThreshold).toBe(7);
+    expect(q.scaleThresholdDirection).toBe('gte');
+  });
+
+  it('maps a question with no notify dept to empty string', () => {
+    // Empty-string convention: keeps the field a plain string so the form
+    // controls don't need a null-aware code path. Backend stores null.
+    const q = mapQuestion({
+      id: 'q3',
+      text: 'Open question',
+      section: '',
+      issue_on: 'either',
+      notify_department_id: null,
+      department_id: null,
+      type: 'yesno',
+      scale_min: null,
+      scale_max: null,
+      scale_threshold: null,
+      scale_threshold_direction: null,
+      in_repository: true,
+    } as never);
+    expect(q.notifyDepartmentId).toBe('');
+    expect(q.departmentId).toBe('');
+  });
+
+  it('mapRound carries answerNumber for scale answers', () => {
+    const r = mapRound({
+      id: 'rnd-scale',
+      template_id: 'tmpl-1',
+      angel_id: 'ang-1',
+      resident_id: 'res-1',
+      completed_at: '2026-05-07T10:00:00Z',
+      answers: [
+        // pain level 8 — answer_number populated, answer is null
+        { question_id: 'q-pain', answer: null, answer_number: 8, issue_flagged: true },
+        // yes/no answer with no number
+        { question_id: 'q-skin', answer: true, answer_number: null, issue_flagged: false },
+      ],
+    } as never);
+    expect(r.answers[0].answerNumber).toBe(8);
+    expect(r.answers[0].answer).toBeNull();
+    expect(r.answers[1].answerNumber).toBeNull();
+    expect(r.answers[1].answer).toBe(true);
+  });
+
+  it('findDuplicateDepartment matches case-insensitively and trims', () => {
+    const depts = [
+      { id: 'd1', name: 'Nursing' },
+      { id: 'd2', name: 'Rapid Round' },
+    ];
+    expect(findDuplicateDepartment('nursing', depts)?.id).toBe('d1');
+    expect(findDuplicateDepartment('  RAPID ROUND  ', depts)?.id).toBe('d2');
+    expect(findDuplicateDepartment('Dietary', depts)).toBeNull();
+    expect(findDuplicateDepartment('', depts)).toBeNull();
+    expect(findDuplicateDepartment('   ', depts)).toBeNull();
+  });
+
+  it('unwrap treats 204 no-content responses as success', () => {
+    // Regression: openapi-fetch returns {data: undefined, error: undefined}
+    // for successful 204 DELETEs. The old `data === undefined ⇒ throw` rule
+    // made every delete throw "API error" — and the UI never updated, so
+    // users would retry and hit a real 404. Lock in the new behavior.
+    expect(() => unwrap({ data: undefined, error: undefined })).not.toThrow();
+  });
+
+  it('unwrap throws when the response carries an error detail', () => {
+    expect(() => unwrap({ data: undefined, error: { detail: 'Not found' } }))
+      .toThrowError('Not found');
+  });
+
+  it('unwrap throws "API error" for opaque errors', () => {
+    expect(() => unwrap({ data: undefined, error: 'boom' }))
+      .toThrowError('API error');
   });
 
   it('maps a resident group with member ids', () => {
