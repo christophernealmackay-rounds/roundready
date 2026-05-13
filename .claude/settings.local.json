@@ -67,7 +67,12 @@
       "mcp__plugin_playwright_playwright__browser_snapshot",
       "Bash(tasklist)",
       "mcp__plugin_playwright_playwright__browser_wait_for",
-      "mcp__plugin_playwright_playwright__browser_click"
+      "mcp__plugin_playwright_playwright__browser_click",
+      "PowerShell(Start-Sleep -Seconds 3; try { $r = Invoke-WebRequest -Uri 'http://localhost:8000/api/v1/health' -UseBasicParsing -TimeoutSec 5; \"$\\($r.StatusCode\\) $\\($r.Content\\)\" } catch { \"fail: $\\($_.Exception.Message\\)\" })",
+      "PowerShell(Stop-Process *)",
+      "PowerShell(Start-Sleep -Seconds 4; try { \\(Invoke-WebRequest 'http://localhost:8000/api/v1/health' -UseBasicParsing -TimeoutSec 5\\).StatusCode } catch { \"fail\" })",
+      "Bash(cmd *)",
+      "PowerShell(Get-CimInstance *)"
     ]
   }
 }
