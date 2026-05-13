@@ -566,3 +566,60 @@ Every component with logic gets a Vitest test. Minimum coverage:
 - [ ] `docker-compose up` in production config starts cleanly with zero errors
 - [ ] Alembic migration check catches a missing migration in CI (verified by test)
 - [ ] Seed reset works on staging — app returns to clean demo state
+
+---
+
+## Phase 8 — Demo polish iterations (2026-05-12 → 2026-05-13)
+
+Two consecutive sessions of user-driven corrections walking the demo from front to back. Everything below is shipped to `origin/master` and verified live in the browser against the running Supabase project. Test counts: **backend pytest 61 → 74 (+13)**, **frontend vitest 22 → 33 (+11)**, build clean.
+
+### 8.1 Rounds tab — four corrections
+
+Commits `368d278` (backend) · `fd316dc` (plumbing) · `f3ab114` (UI). All shipped 2026-05-12.
+
+- [x] **Repository grouped by department** — `RepositoryPanel` (`frontend/src/app/(app)/rounds/page.tsx:698`) groups questions under sticky `SectionLabel` headers; sticky filter dropdown narrows to one dept; Uncategorized sorts last.
+- [x] **Optional "Notify department on flag"** — pill toggle in the question form; the dept dropdown only renders when Yes. `useRoundsStore.updateRepositoryQuestion` PATCHes with explicit `null` when the user picks No (backend `QuestionUpdate` switched to `exclude_unset` semantics so the field is clearable).
+- [x] **Scale-type questions** — schema additions on `questions` (`type`, `scale_min`, `scale_max`, `scale_threshold`, `scale_threshold_direction`) and `round_answers.answer_number`. `submit_round` (`backend/app/api/v1/rounds.py`) now batches a single SELECT to fetch every referenced question and computes `issue_flagged` server-side for both yes/no and scale — clients can no longer fake the flag. AngelRoundFlow's `ScalePicker` renders a wrap-flow of numeric tap buttons.
+- [x] **Drag auto-scroll** — `useEffect` in `rounds/page.tsx` attaches a window `dragover` listener gated on our `DRAG_MIME`; speed scales with proximity to viewport edges, capped at 12px/frame.
+
+### 8.2 unwrap() 204 fix (latent regression surfaced during 8.1 testing)
+
+Commit `fd316dc`. `unwrap` in `frontend/src/lib/api/domain.ts` was treating `data === undefined` as failure — exactly the shape `openapi-fetch` returns for a successful 204 No-Content `DELETE`. **Every** delete in the app was silently failing post-success (the row was gone but the UI never updated, so retries would 404). Tightened to throw only when `error` is set.
+
+### 8.3 "+ New question" creation flow
+
+Commits `12d9a8b` (chore) within the 8.1 push; the feature itself rolled with `f3ab114`. UI-only change reusing `addRepositoryQuestion` / `addDepartment` / `POST /api/v1/questions`.
+
+- [x] **+ New question button** in `RepositoryPanel` header — renders on both Angel Rounds and Rapid Round tabs (single panel, both surfaces).
+- [x] **QuestionFormModal** (refactored from `EditQuestionModal`) handles `question = null` create mode + `Question` edit mode with conditional title and primary button.
+- [x] **Inline + Create new department…** in the department dropdown — swaps the `<select>` for a text input; on save the new dept is created first (`useUsersStore.addDepartment`) and the resulting id is wired into the question. Case-insensitive duplicate guard (`findDuplicateDepartment` helper, unit-tested).
+
+### 8.4 QAPI tab edits, QAA per-meeting notes, RapidRound deploy
+
+Commits `7b73787` (backend) · `e7d7be3` (plumbing) · `4332a6c` (UI), plus `3a31444` (chore). Shipped 2026-05-13.
+
+- [x] **QAPI item edit affordance** — pencil button on each item row (`qapi/page.tsx:206`) opens the existing form pre-filled. Modal is dual-purpose; itemId on the open-state sentinel toggles create vs. edit semantics. `useQapiStore.updateItem` was already wired but unused.
+- [x] **QAPI Template sub-tab hides unlinked sections** — filter `template.sections.filter(s => s.qapiId)`. Empty-state copy points the user to the Rounds tab if everything filters out. The unlinked "Safety & General" catch-all stays on the Rounds tab where the full angel template lives, and angels still see those questions during rounds.
+- [x] **QAA per-meeting notes** — new `qaa_meeting_notes` table (`db/schema.sql`), new `backend/app/schemas/qaa.py` + `backend/app/api/v1/qaa_meeting_notes.py` CRUD router. Migration applied non-destructively via Supabase MCP; the existing singleton `qaa_notes` content was backfilled as a single "Imported committee notes" entry dated 2026-05-12. Frontend refactor (`qapi/page.tsx:289+`) into a two-pane list/editor (`QaaNotesPane`). `window.print()` triggered by per-entry **Print** and footer **Print all**, with a hidden `.qaa-print-target` rendered conditionally and styled by `@media print` rules in `globals.css` — no new dependency.
+- [x] **Rapid Round deploy + angel-side surfacing** — new `round_templates.deployed_at` column + `POST /api/v1/rounds/templates/{id}/deploy` route (idempotent; rejects non-rapid with 422). `_build_template_out` now projects `deployed_at` and a cheap `rapid_completion_count` (COUNT(*) over rounds tied to the template). Frontend Rapid Round tab gains a blue **Deploy to Angels** button when `deployedAt === null`; a plum "Deployed · N rounds in" pill replaces it after deploy. `AngelRoundFlow` accepts a `rapidTemplates: RoundTemplate[]` prop, flattens questions across the angel template + every deployed rapid template, tags each visible question with `source: 'angel' | 'rapid'`, and surfaces a purple `Rapid Round · {name}` pill above rapid questions. Submit fans out to one round per source template so completion counts actually move.
+
+### 8.5 Orphan uvicorn workers — process hygiene (operational)
+
+No code change; documented to prevent recurrence. After several `Stop-Process -Id <reloader>` calls during the session, six worker children inherited from `multiprocessing.spawn` survived and kept listening on port 8000. Oldest worker (from before Phase 8.4 Pydantic changes) won the kernel's connection routing and served `/openapi.json` with 34 paths — the new Phase-8.4 routes appeared in-process but not over the wire. Confirmed via `Get-CimInstance Win32_Process` (8 alive python procs, only 2 were the current reloader pair).
+
+**Habit going forward:** when stopping uvicorn `--reload` from non-interactive tooling, use `taskkill /F /T /PID <reloader>` (walks the process tree) or filter `Get-CimInstance` for `*uvicorn*` / `*multiprocessing-fork*` and `Stop-Process` each match. `Stop-Process` on the reloader alone is not sufficient on Windows.
+
+### 8.6 Test additions
+
+| Layer | Pre-Phase-8 | Post | Delta |
+|---|---|---|---|
+| pytest (live Supabase) | 61 | 74 | **+13** |
+| vitest | 22 | 33 | **+11** |
+
+Coverage hot spots added: scale validator (3), scale flag computation gte+lte (3), notify-clear PATCH (1), QAA meeting CRUD (2), rapid deploy + idempotency + completion count (3); mapper round-trips for new fields (5), unwrap 204 behavior (3), findDuplicateDepartment (1), helper edge cases (2).
+
+### 8.7 What's deferred
+
+- Reminders engine — `notification_prefs.reminders` is stored but unwired; only an in-app banner approach was discussed for demo. Real scheduler is out of scope until the dashboard pass lands.
+- Dashboard + Reports redesign — explicitly deferred by the user until after Phase 8 ships.
+- Production Playwright E2E suite — manual browser verification only (run per-tab via `playwright` MCP at the end of each phase).
