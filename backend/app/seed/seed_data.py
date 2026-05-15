@@ -681,6 +681,21 @@ async def run_seed(conn: asyncpg.Connection) -> dict:
         _uuid(), FACILITY_ID, QAA_NOTES_TEXT,
     )
 
+    # ---- QAA meeting notes (one entry so a reseed leaves the per-meeting
+    # surface coherent — the singleton above is legacy-compat only) ----
+    await conn.execute(
+        "INSERT INTO qaa_meeting_notes (id, facility_id, meeting_date, title, content) "
+        "VALUES ($1, $2, $3, $4, $5)",
+        _uuid(), FACILITY_ID, today, "QAA Committee Meeting", QAA_NOTES_TEXT,
+    )
+
+    # ---- Facility settings ----
+    await conn.execute(
+        "INSERT INTO facility_settings (id, facility_id, licensed_bed_count) "
+        "VALUES ($1, $2, $3)",
+        _uuid(), FACILITY_ID, 55,
+    )
+
     return {
         "departments": len(DEPARTMENTS),
         "users": 1 + len(ANGEL_PROFILES) + 2,  # admin + angels + charge + viewer
@@ -698,4 +713,6 @@ async def run_seed(conn: asyncpg.Connection) -> dict:
         "issues_open": max(0, len(issues_capped) - issue_resolution_split),
         "issues_resolved": min(issue_resolution_split, len(issues_capped)),
         "qaa_notes": 1,
+        "qaa_meeting_notes": 1,
+        "facility_settings": 1,
     }

@@ -1468,6 +1468,45 @@ class TestQaaNotes:
         await client.put("/api/v1/qaa-notes", json={"content": original})
 
 
+class TestFacilitySettings:
+    async def test_facility_settings_singleton_and_persist(
+        self, client: AsyncClient
+    ):
+        """GET auto-returns one row per facility; PUT persists the bed count
+        and never multiplies rows. This is the contract the dashboard census
+        widget depends on."""
+        before = (await client.get("/api/v1/facility-settings")).json()
+        first_id = before["id"]
+        original = before["licensed_bed_count"]
+        assert isinstance(original, int) and original >= 1
+
+        r = await client.put(
+            "/api/v1/facility-settings", json={"licensed_bed_count": 117}
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["licensed_bed_count"] == 117
+        assert r.json()["id"] == first_id
+
+        after = (await client.get("/api/v1/facility-settings")).json()
+        assert after["id"] == first_id
+        assert after["licensed_bed_count"] == 117
+
+        # Restore baseline so other tests / the demo aren't surprised.
+        await client.put(
+            "/api/v1/facility-settings", json={"licensed_bed_count": original}
+        )
+
+    async def test_facility_settings_rejects_non_positive(
+        self, client: AsyncClient
+    ):
+        """licensed_bed_count has Field(ge=1) — zero / negative is a 422,
+        not a silently-accepted nonsense census denominator."""
+        r = await client.put(
+            "/api/v1/facility-settings", json={"licensed_bed_count": 0}
+        )
+        assert r.status_code == 422, r.text
+
+
 # ---------------------------------------------------------------------------
 # Admin seed-reset (DEMO_MODE-gated)
 # ---------------------------------------------------------------------------

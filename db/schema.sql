@@ -30,6 +30,7 @@ DROP TABLE IF EXISTS users                      CASCADE;
 DROP TABLE IF EXISTS departments                CASCADE;
 DROP TABLE IF EXISTS qaa_meeting_notes          CASCADE;
 DROP TABLE IF EXISTS qaa_notes                  CASCADE;
+DROP TABLE IF EXISTS facility_settings          CASCADE;
 
 -- Old divergent tables from earlier seeding rounds; drop them too.
 DROP TABLE IF EXISTS round_responses    CASCADE;
@@ -292,6 +293,17 @@ CREATE INDEX qaa_meeting_notes_facility_date_idx
   ON qaa_meeting_notes(facility_id, meeting_date DESC);
 
 -- =============================================================================
+-- Facility settings (one row per facility; licensed bed count drives the
+-- dashboard census percentage).
+-- =============================================================================
+CREATE TABLE facility_settings (
+  id                 UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  facility_id        UUID,
+  licensed_bed_count INT         NOT NULL DEFAULT 55,
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- =============================================================================
 -- Row Level Security
 -- =============================================================================
 ALTER TABLE departments                ENABLE ROW LEVEL SECURITY;
@@ -312,6 +324,7 @@ ALTER TABLE issues                     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE issue_notifications        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE qaa_notes                  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE qaa_meeting_notes          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE facility_settings          ENABLE ROW LEVEL SECURITY;
 
 -- Permissive policies (MVP). Backend uses service role which bypasses RLS;
 -- these policies exist so that any authenticated client (e.g., future
@@ -334,3 +347,4 @@ CREATE POLICY "auth_all" ON issues                     FOR ALL TO authenticated 
 CREATE POLICY "auth_all" ON issue_notifications        FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "auth_all" ON qaa_notes                  FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "auth_all" ON qaa_meeting_notes          FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "auth_all" ON facility_settings          FOR ALL TO authenticated USING (true) WITH CHECK (true);
