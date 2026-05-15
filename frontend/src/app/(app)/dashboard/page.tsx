@@ -10,6 +10,8 @@ import { useIssuesStore } from "@/lib/store/useIssuesStore";
 import { useResidentsStore } from "@/lib/store/useResidentsStore";
 import { useAngelsStore } from "@/lib/store/useAngelsStore";
 import { useQapiStore } from "@/lib/store/useQapiStore";
+import { useFacilityStore } from "@/lib/store/useFacilityStore";
+import { qapiItemStats, qapiItemQuestionIds } from "@/lib/qapi/itemStats";
 import { todayIsoDate, formatDate } from "@/lib/dates";
 import {
   PageHero,
@@ -18,6 +20,7 @@ import {
   KpiCard,
   RefinedTooltip,
   Pill,
+  Sparkline,
 } from "@/components/ui";
 
 type Range = "today" | "week" | "month";
@@ -35,6 +38,7 @@ export default function DashboardPage() {
   const residents = useResidentsStore((s) => s.residents);
   const angels = useAngelsStore((s) => s.angels);
   const qapis = useQapiStore((s) => s.qapis);
+  const licensedBeds = useFacilityStore((s) => s.licensedBedCount);
 
   const activeTemplate = templates.find((t) => t.active && t.type === "angel");
 
@@ -198,6 +202,31 @@ export default function DashboardPage() {
       return { id: qapi.id, title: qapi.title, rate, issues: qapiIssues, rounds: inRange.length };
     });
   }, [completedRounds, issues, qapis, activeTemplate, range]);
+
+  // Per-QAPI-item KPI cards — "clean rate" (answered questions with no issue
+  // flagged) + daily sparkline, for every item that has linked questions.
+  const qapiItemKpis = useMemo(() => {
+    const now = new Date(TODAY + "T23:59:59");
+    const start = range === "today"
+      ? new Date(TODAY + "T00:00:00")
+      : range === "week"
+        ? (() => { const d = new Date(now); d.setDate(d.getDate() - 6); d.setHours(0,0,0,0); return d; })()
+        : (() => { const d = new Date(now); d.setDate(d.getDate() - 29); d.setHours(0,0,0,0); return d; })();
+
+    return qapis
+      .filter((q) => q.status === "active")
+      .flatMap((qapi) =>
+        [...qapi.items]
+          .sort((a, b) => a.order - b.order)
+          .filter((item) => qapiItemQuestionIds(item, activeTemplate).size > 0)
+          .map((item) => ({
+            qapiId: qapi.id,
+            qapiTitle: qapi.title,
+            item,
+            ...qapiItemStats(item, activeTemplate, completedRounds, start, now),
+          })),
+      );
+  }, [qapis, activeTemplate, completedRounds, range]);
 
   const current = kpi[range];
   const chart = chartData[range];
@@ -463,6 +492,84 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* Per-QAPI-item performance — clean rate (answered with no issue) +
+          daily trend sparkline. Click through to the per-item report. */}
+      {qapiItemKpis.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <SectionLabel accent="plum">
+            QAPI Item Performance — {range === "today" ? "today" : range === "week" ? "this week" : "this month"}
+          </SectionLabel>
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(qapiItemKpis.length, 3)},1fr)`, gap: 10 }}>
+            {qapiItemKpis.map((x, i) => {
+              const rate = x.cleanRate;
+              const rateColor = rate === null ? "var(--muted)" : rate >= 90 ? "var(--green)" : rate >= 75 ? "var(--amber-mid)" : "var(--red)";
+              const sparkAccent: "green" | "amber" | "red" = rate === null || rate >= 90 ? "green" : rate >= 75 ? "amber" : "red";
+              return (
+                <Link key={x.item.id} href={`/reports?qapiItem=${x.item.id}`} style={{ textDecoration: "none" }}>
+                  <RefinedCard hoverable revealIndex={9 + i} padding="16px 18px">
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div>
+                        <div style={{ fontSize: 9.5, fontWeight: 600, color: "var(--plum)", textTransform: "uppercase", letterSpacing: "0.13em", marginBottom: 4 }}>
+                          {x.qapiTitle}
+                        </div>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", lineHeight: 1.35, fontFamily: "var(--font-display)", letterSpacing: "-0.012em" }}>
+                          {x.item.title}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10 }}>
+                        <div>
+                          <div
+                            style={{
+                              fontSize: 40,
+                              fontFamily: "var(--font-display)",
+                              fontStyle: "italic",
+                              fontWeight: 400,
+                              color: rateColor,
+                              lineHeight: 1,
+                              letterSpacing: "-0.022em",
+                              fontVariantNumeric: "tabular-nums",
+                            }}
+                          >
+                            {rate !== null ? `${rate}%` : "—"}
+                          </div>
+                          <div style={{ fontSize: 9.5, fontWeight: 600, color: "var(--muted)", marginTop: 5, textTransform: "uppercase", letterSpacing: "0.13em" }}>
+                            Clean rate
+                          </div>
+                        </div>
+                        {x.flagged > 0 && (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 600,
+                              padding: "2px 8px",
+                              borderRadius: 999,
+                              background: "var(--amber-tint)",
+                              color: "var(--amber-mid)",
+                              flexShrink: 0,
+                              fontVariantNumeric: "tabular-nums",
+                              letterSpacing: "0.02em",
+                            }}
+                          >
+                            {x.flagged} flagged
+                          </span>
+                        )}
+                      </div>
+                      <Sparkline data={x.daily} accent={sparkAccent} />
+                      <div style={{ fontSize: 11, color: "var(--muted)", display: "flex", justifyContent: "space-between" }}>
+                        <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                          {x.answered > 0 ? `${x.answered} answered · ${x.flagged} with issues` : "No data in range"}
+                        </span>
+                        <span style={{ color: "var(--blue)", fontWeight: 500 }}>View report →</span>
+                      </div>
+                    </div>
+                  </RefinedCard>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* 2-column body */}
       <div className="luxe-reveal-body" style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 12 }}>
 
@@ -637,14 +744,14 @@ export default function DashboardPage() {
               >
                 {activeResidents}
               </span>
-              <span style={{ fontSize: 13, color: "var(--muted)" }}>/ 55 beds</span>
+              <span style={{ fontSize: 13, color: "var(--muted)" }}>/ {licensedBeds} beds</span>
             </div>
             {(() => {
-              const pct = Math.round((activeResidents / 55) * 100);
+              const pct = Math.round((activeResidents / licensedBeds) * 100);
               const tone =
-                activeResidents / 55 >= 0.9
+                activeResidents / licensedBeds >= 0.9
                   ? { color: "var(--green)", grad: "linear-gradient(90deg, var(--green-mid), var(--green))" }
-                  : activeResidents / 55 >= 0.8
+                  : activeResidents / licensedBeds >= 0.8
                     ? { color: "var(--amber-mid)", grad: "linear-gradient(90deg, #C58F2A, var(--amber-mid))" }
                     : { color: "var(--red-mid)", grad: "linear-gradient(90deg, #D24A4A, var(--red-mid))" };
               return (
@@ -676,7 +783,7 @@ export default function DashboardPage() {
                     </span>
                     <span style={{ margin: "0 5px" }}>occupancy</span>
                     <span style={{ color: "var(--hair-strong)" }}>·</span>
-                    <span style={{ marginLeft: 5 }}>{55 - activeResidents} beds available</span>
+                    <span style={{ marginLeft: 5 }}>{licensedBeds - activeResidents} beds available</span>
                   </div>
                 </>
               );

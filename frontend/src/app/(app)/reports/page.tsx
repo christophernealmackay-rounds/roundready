@@ -11,6 +11,7 @@ import { useResidentGroupsStore } from "@/lib/store/useResidentGroupsStore";
 import GroupPills from "@/components/groups/GroupPills";
 import { todayEndOfDay, todayIsoDate, formatDate } from "@/lib/dates";
 import { PageHero, SectionLabel, RefinedCard, KpiCard, RefinedTooltip, Pill } from "@/components/ui";
+import { qapiItemStats, qapiItemQuestionIds, recurringQuestions } from "@/lib/qapi/itemStats";
 
 type DateRange = "month" | "30" | "7" | "yesterday" | "custom";
 
@@ -48,9 +49,11 @@ export default function ReportsPage() {
 
   const searchParams = useSearchParams();
   const qapiIdFromUrl = searchParams.get("qapi");
+  const qapiItemIdFromUrl = searchParams.get("qapiItem");
 
   const [dateRange, setDateRange] = useState<DateRange>("month");
   const [selectedQapi, setSelectedQapi] = useState("All QAPIs");
+  const [reportMode, setReportMode] = useState<"aggregate" | "byItem">("aggregate");
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
   // Custom date inputs — also used to display the resolved range in the
   // generated report masthead when dateRange === 'custom'.
@@ -97,6 +100,21 @@ export default function ReportsPage() {
     // not adding it to deps to avoid retriggering on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qapiIdFromUrl, qapis]);
+
+  // Apply ?qapiItem=<id> — dashboard per-item card click-through. Scope to
+  // the item's parent QAPI, switch to the by-item view, and pre-fill range.
+  useEffect(() => {
+    if (!qapiItemIdFromUrl) return;
+    const parent = qapis.find((q) =>
+      q.items.some((it) => it.id === qapiItemIdFromUrl),
+    );
+    if (parent) {
+      setSelectedQapi(parent.title);
+      applyQapiRange(parent.title);
+      setReportMode("byItem");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qapiItemIdFromUrl, qapis]);
 
   const activeResidents = residents.filter((r) => r.status === "active");
 
@@ -191,7 +209,32 @@ export default function ReportsPage() {
       return { question: q.text.length > 42 ? q.text.slice(0, 42) + "…" : q.text, yes, no, issues: iss };
     }).filter((d) => d.yes + d.no > 0);
 
-    return { rounds: inRange.length, rate: `${rate}%`, issues: issuesInRange.length, resolved, missed: 0, qapiBars, drilldown };
+    // Per-QAPI-item report — clean rate, per-question breakdown, recurring.
+    const targetQapis = qapis.filter((q) =>
+      selectedQapi === "All QAPIs" ? q.status === "active" : q.title === selectedQapi
+    );
+    const itemReport = targetQapis.flatMap((qapi) =>
+      [...qapi.items]
+        .sort((a, b) => a.order - b.order)
+        .filter((item) => qapiItemQuestionIds(item, activeTemplate).size > 0)
+        .map((item) => {
+          const stats = qapiItemStats(item, activeTemplate, inRange, start, end);
+          const qIds = qapiItemQuestionIds(item, activeTemplate);
+          const roundsTouched = inRange.filter((r) =>
+            r.answers.some((a) => qIds.has(a.questionId)),
+          ).length;
+          return {
+            qapiTitle: qapi.title,
+            itemId: item.id,
+            itemTitle: item.title,
+            ...stats,
+            roundsTouched,
+            recurring: recurringQuestions(stats.byQuestion),
+          };
+        }),
+    );
+
+    return { rounds: inRange.length, rate: `${rate}%`, issues: issuesInRange.length, resolved, missed: 0, qapiBars, drilldown, itemReport };
   }, [completedRounds, issues, qapis, templates, questions, dateRange, customStart, customEnd, selectedQapi, selectedResidents, groupFilter, groups]);
 
   return (
@@ -322,6 +365,19 @@ export default function ReportsPage() {
             </select>
           </div>
 
+          {/* Report type */}
+          <div>
+            <SectionLabel accent="muted" style={{ marginBottom: 7 }}>Report type</SectionLabel>
+            <div style={{ display: "flex", gap: 5 }}>
+              <Pill active={reportMode === "aggregate"} onClick={() => setReportMode("aggregate")}>
+                Aggregate
+              </Pill>
+              <Pill active={reportMode === "byItem"} onClick={() => setReportMode("byItem")}>
+                By QAPI item
+              </Pill>
+            </div>
+          </div>
+
           {/* Residents */}
           <div style={{ position: "relative" }}>
             <SectionLabel accent="muted" style={{ marginBottom: 7 }}>Residents</SectionLabel>
@@ -426,7 +482,7 @@ export default function ReportsPage() {
           metadata sits in mono on the right; the scorecard grid + drilldown
           stack below as if they were typeset on the same page. The whole
           block sits on a slightly warmer surface to evoke paper. */}
-      {(generated || report.rounds > 0) && report.qapiBars.length > 0 && (
+      {(generated || report.rounds > 0) && (reportMode === "aggregate" ? report.qapiBars.length > 0 : report.itemReport.length > 0) && (
         <RefinedCard
           revealIndex={1}
           padding="32px 40px 28px"
@@ -532,7 +588,10 @@ export default function ReportsPage() {
             ))}
           </div>
 
-          {/* Two columns: QAPI breakdown + question drilldown */}
+          {/* Aggregate: two columns — QAPI breakdown + question drilldown.
+              By item: one section per QAPI item with scorecard, recurring
+              callout, and a per-question table. */}
+          {reportMode === "aggregate" ? (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
             {/* QAPI compliance bar chart */}
             <div>
@@ -580,6 +639,96 @@ export default function ReportsPage() {
               )}
             </div>
           </div>
+          ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 30 }}>
+            {report.itemReport.length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--muted)", textAlign: "center", padding: "32px 0", fontStyle: "italic", fontFamily: "var(--font-display)" }}>
+                No QAPI items with linked questions for this selection.
+              </div>
+            ) : report.itemReport.map((it) => {
+              const rate = it.cleanRate;
+              const rateColor = rate === null ? "var(--muted)" : rate >= 90 ? "var(--green)" : rate >= 75 ? "var(--amber-mid)" : "var(--red)";
+              const cells = [
+                { label: "Clean rate", value: rate !== null ? `${rate}%` : "—", color: rateColor },
+                { label: "Answered", value: String(it.answered), color: "var(--ink)" },
+                { label: "Flagged", value: String(it.flagged), color: it.flagged > 0 ? "var(--amber-mid)" : "var(--muted)" },
+                { label: "Rounds", value: String(it.roundsTouched), color: "var(--ink)" },
+              ];
+              return (
+                <div key={it.itemId}>
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 9.5, fontWeight: 600, color: "var(--plum)", textTransform: "uppercase", letterSpacing: "0.16em", marginBottom: 5 }}>
+                      {it.qapiTitle}
+                    </div>
+                    <div style={{ fontFamily: "var(--font-display)", fontSize: 19, fontWeight: 400, color: "var(--blue-ink)", letterSpacing: "-0.014em" }}>
+                      {it.itemTitle}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 0, marginBottom: 18, borderTop: "1px solid var(--hair)", borderBottom: "1px solid var(--hair)" }}>
+                    {cells.map((c, i, arr) => (
+                      <div key={c.label} style={{ padding: "14px 16px", borderRight: i < arr.length - 1 ? "1px solid var(--hair-soft)" : undefined }}>
+                        <div style={{ fontSize: 26, fontWeight: 600, color: c.color, fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums", letterSpacing: "-0.01em", lineHeight: 1 }}>
+                          {c.value}
+                        </div>
+                        <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.13em", marginTop: 6 }}>
+                          {c.label}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {it.recurring.length > 0 && (
+                    <div style={{ background: "var(--amber-tint)", border: "1px solid var(--amber-edge)", borderRadius: 9, padding: "12px 14px", marginBottom: 16 }}>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: "var(--amber)", textTransform: "uppercase", letterSpacing: "0.13em", marginBottom: 8 }}>
+                        ⚠ Recurring questions (≥3 issues)
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        {it.recurring.map((q) => (
+                          <div key={q.questionId} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12, color: "var(--ink-soft)" }}>
+                            <span style={{ lineHeight: 1.35 }}>{q.text}</span>
+                            <span style={{ fontFamily: "var(--font-mono)", color: "var(--amber-mid)", fontWeight: 600, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+                              {q.issues} issues
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <SectionLabel accent="amber" style={{ marginBottom: 12 }}>Per-question breakdown</SectionLabel>
+                  {it.byQuestion.length === 0 ? (
+                    <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", fontFamily: "var(--font-display)", padding: "8px 0" }}>
+                      No answers recorded in this window.
+                    </div>
+                  ) : (
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid var(--blue-ink)" }}>
+                          {["Question", "Yes", "No", "Issues"].map((h) => (
+                            <th key={h} style={{ textAlign: h === "Question" ? "left" : "right", padding: "6px 8px 10px", color: "var(--ink-soft)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.13em", fontSize: 9.5 }}>
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {it.byQuestion.map((d, i) => (
+                          <tr key={d.questionId} style={{ borderBottom: i < it.byQuestion.length - 1 ? "1px solid var(--hair-soft)" : undefined }}>
+                            <td style={{ padding: "9px 8px", color: "var(--ink-soft)", lineHeight: 1.4 }}>{d.text}</td>
+                            <td style={{ padding: "9px 8px", textAlign: "right", fontFamily: "var(--font-mono)", color: "var(--green)", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{d.yes}</td>
+                            <td style={{ padding: "9px 8px", textAlign: "right", fontFamily: "var(--font-mono)", color: d.no > 0 ? "var(--red)" : "var(--muted)", fontWeight: d.no > 0 ? 600 : 400, fontVariantNumeric: "tabular-nums" }}>{d.no}</td>
+                            <td style={{ padding: "9px 8px", textAlign: "right", fontFamily: "var(--font-mono)", color: d.issues > 0 ? "var(--amber-mid)" : "var(--muted)", fontVariantNumeric: "tabular-nums" }}>{d.issues}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          )}
 
           {/* Footer signature line */}
           <div style={{ marginTop: 28, paddingTop: 18, borderTop: "1px solid var(--hair)", display: "flex", justifyContent: "space-between", gap: 20 }}>

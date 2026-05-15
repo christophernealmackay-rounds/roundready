@@ -8,3 +8,4 @@ export { default as RefinedCard } from "./RefinedCard";
 export { default as KpiCard } from "./KpiCard";
 export { default as RefinedTooltip } from "./RefinedTooltip";
 export { default as Pill } from "./Pill";
+export { default as Sparkline } from "./Sparkline";

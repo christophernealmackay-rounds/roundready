@@ -615,6 +615,19 @@ export async function updateQaaNotes(content: string): Promise<QaaNotes> {
   return mapQaaNote(unwrap(res));
 }
 
+// ── Facility settings ───────────────────────────────────────────────────────
+export async function getFacilitySettings(): Promise<number> {
+  const res = await api.GET('/api/v1/facility-settings');
+  return unwrap(res).licensed_bed_count;
+}
+
+export async function updateFacilitySettings(count: number): Promise<number> {
+  const res = await api.PUT('/api/v1/facility-settings', {
+    body: { licensed_bed_count: count },
+  });
+  return unwrap(res).licensed_bed_count;
+}
+
 // ── QAA Meeting Notes (per-meeting entries) ─────────────────────────────────
 export async function listQaaMeetingNotes(): Promise<QaaMeetingNote[]> {
   const res = await api.GET('/api/v1/qaa-meeting-notes');

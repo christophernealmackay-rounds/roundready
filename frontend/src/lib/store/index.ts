@@ -5,3 +5,4 @@ export { useResidentGroupsStore } from './useResidentGroupsStore';
 export { useQapiStore } from './useQapiStore';
 export { useRoundsStore } from './useRoundsStore';
 export { useIssuesStore } from './useIssuesStore';
+export { useFacilityStore } from './useFacilityStore';

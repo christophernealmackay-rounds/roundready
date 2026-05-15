@@ -230,7 +230,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Angels */
+        /**
+         * List Angels
+         * @description List all angels with enriched user/department/resident-count fields.
+         *
+         *     Batched: O(3) round-trips total regardless of angel count, vs. the
+         *     O(3 × N) the per-row _build_angel_out helper would do.
+         */
         get: operations["list_angels_api_v1_angels_get"];
         put?: never;
         /** Create Angel */
@@ -581,6 +587,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/rounds/{round_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Round */
+        delete: operations["delete_round_api_v1_rounds__round_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/rounds": {
         parameters: {
             query?: never;
@@ -672,6 +695,24 @@ export interface paths {
         head?: never;
         /** Update Note */
         patch: operations["update_note_api_v1_qaa_meeting_notes__note_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/facility-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings_api_v1_facility_settings_get"];
+        /** Update Settings */
+        put: operations["update_settings_api_v1_facility_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/admin/seed-reset": {
@@ -787,6 +828,28 @@ export interface components {
             facility_id: string | null;
             /** Custom */
             custom: boolean;
+        };
+        /** FacilitySettingsOut */
+        FacilitySettingsOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Facility Id */
+            facility_id?: string | null;
+            /** Licensed Bed Count */
+            licensed_bed_count: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** FacilitySettingsUpdate */
+        FacilitySettingsUpdate: {
+            /** Licensed Bed Count */
+            licensed_bed_count: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -3054,6 +3117,35 @@ export interface operations {
             };
         };
     };
+    delete_round_api_v1_rounds__round_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                round_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_rounds_api_v1_rounds_get: {
         parameters: {
             query?: {
@@ -3315,6 +3407,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QaaMeetingNoteOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_facility_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FacilitySettingsOut"];
+                };
+            };
+        };
+    };
+    update_settings_api_v1_facility_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FacilitySettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FacilitySettingsOut"];
                 };
             };
             /** @description Validation Error */

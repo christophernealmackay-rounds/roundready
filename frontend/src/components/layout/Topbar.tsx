@@ -1,9 +1,9 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import { useIssuesStore, useRoundsStore, useUsersStore } from "@/lib/store";
+import { useFacilityStore, useIssuesStore, useRoundsStore, useUsersStore } from "@/lib/store";
 import { initials, useCurrentUser } from "@/lib/auth/currentUser";
 import { todayDisplay } from "@/lib/dates";
 import type { NotificationPrefs } from "@/lib/types";
@@ -34,11 +34,44 @@ export default function Topbar() {
     setNotificationPrefs(currentUser.id, { ...userPrefs, [key]: !userPrefs[key] });
   }
 
+  const licensedBedCount = useFacilityStore((s) => s.licensedBedCount);
+  const setLicensedBedCount = useFacilityStore((s) => s.setLicensedBedCount);
+
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeDays, setActiveDays] = useState([0, 1, 2, 3, 4]);
   const [times, setTimes] = useState(["10:00 AM", "1:00 PM", "4:00 PM"]);
   const [reminders, setReminders] = useState(true);
-  const [capacity, setCapacity] = useState("55");
+  const [capacity, setCapacity] = useState(String(licensedBedCount));
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+
+  // Reflect the persisted value whenever the panel is (re)opened so the
+  // input never shows stale edits from a previous, unsaved session.
+  useEffect(() => {
+    if (settingsOpen) {
+      setCapacity(String(licensedBedCount));
+      setSaveStatus("idle");
+    }
+  }, [settingsOpen, licensedBedCount]);
+
+  async function saveAllSettings() {
+    const n = Number(capacity);
+    if (!Number.isInteger(n) || n < 1) return;
+    setSaveStatus("saving");
+    try {
+      if (n !== licensedBedCount) await setLicensedBedCount(n);
+      setSaveStatus("saved");
+      window.setTimeout(() => setSaveStatus("idle"), 2000);
+    } catch {
+      setSaveStatus("idle");
+    }
+  }
+
+  const saveLabel =
+    saveStatus === "saving"
+      ? "Saving…"
+      : saveStatus === "saved"
+        ? "Saved ✓"
+        : "Save all settings";
   const [emailTogg, setEmailTogg] = useState(true);
   const [pushAdminTogg, setPushAdminTogg] = useState(true);
   const [smsTogg, setSmsTogg] = useState(false);
@@ -297,8 +330,8 @@ export default function Topbar() {
                 </>
               )}
 
-              <button style={{ width: "100%", padding: 10, borderRadius: 8, border: "none", background: "var(--blue)", color: "#fff", fontSize: 13, fontWeight: 500, cursor: "pointer", marginBottom: 20 }}>
-                Save all settings
+              <button onClick={saveAllSettings} disabled={saveStatus === "saving"} style={{ width: "100%", padding: 10, borderRadius: 8, border: "none", background: saveStatus === "saved" ? "var(--green)" : "var(--blue)", color: "#fff", fontSize: 13, fontWeight: 500, cursor: saveStatus === "saving" ? "default" : "pointer", marginBottom: 20, transition: "background 0.2s" }}>
+                {saveLabel}
               </button>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
@@ -445,8 +478,8 @@ export default function Topbar() {
                 </div>
               </div>
 
-              <button style={{ width: "100%", padding: 10, borderRadius: 8, border: "none", background: "var(--blue)", color: "#fff", fontSize: 13, fontWeight: 500, cursor: "pointer", marginBottom: 8 }}>
-                Save all settings
+              <button onClick={saveAllSettings} disabled={saveStatus === "saving"} style={{ width: "100%", padding: 10, borderRadius: 8, border: "none", background: saveStatus === "saved" ? "var(--green)" : "var(--blue)", color: "#fff", fontSize: 13, fontWeight: 500, cursor: saveStatus === "saving" ? "default" : "pointer", marginBottom: 8, transition: "background 0.2s" }}>
+                {saveLabel}
               </button>
             </div>
           </div>

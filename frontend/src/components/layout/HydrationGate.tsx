@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { loadAll } from '@/lib/api/bootstrap';
 import {
   useAngelsStore,
+  useFacilityStore,
   useIssuesStore,
   useQapiStore,
   useResidentGroupsStore,
@@ -46,6 +47,7 @@ export default function HydrationGate({
           rounds: data.rounds,
         });
         useIssuesStore.getState().hydrate(data.issues);
+        useFacilityStore.getState().hydrate(data.facilitySettings);
         // Mark the document as "fresh" so the global .luxe-reveal-* keyframes
         // fire for this first render only. Remove it after the longest
         // reveal sequence has finished (~500ms of staggered animations +
