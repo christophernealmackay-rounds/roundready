@@ -647,6 +647,35 @@ Verified: full backend suite re-run after the fix is **75/75 green**, including 
 
 ### 8.10 What's deferred
 
-- Reminders engine — `notification_prefs.reminders` is stored but unwired; only an in-app banner approach was discussed for demo. Real scheduler is out of scope until the dashboard pass lands.
-- Dashboard + Reports redesign — explicitly deferred by the user until after Phase 8 ships.
+- Reminders engine — `notification_prefs.reminders` is stored but unwired; only an in-app banner approach was discussed for demo. Real scheduler is out of scope.
 - Production Playwright E2E suite — manual browser verification only (run per-tab via `playwright` MCP at the end of each phase).
+
+---
+
+## Phase 9 — Dashboard QAPI-item KPIs + persisted census + reports per-item (2026-05-15)
+
+User-driven demo pass on the Dashboard and Reports tabs. All client-side aggregation (data already hydrated in Zustand) per an explicit decision; census made a real persisted setting. Verified end-to-end in the browser via the `playwright` MCP against the running Supabase project. Test counts: **backend pytest 75 → 77 (+2)**, **frontend vitest 33 → 42 (+9)**, `tsc`/`npm run build` clean. Spec/plan: `~/.claude/plans/declarative-fluttering-pelican.md`.
+
+### 9.1 Persisted licensed bed count
+
+The Settings "Save all settings" button was a no-op stub; bed count was local `useState("55")` and hardcoded `/ 55` in the dashboard census widget (3 places).
+
+- [x] **`facility_settings` table** added to `db/schema.sql` (DROP/RLS/policy) mirroring the `qaa_notes` facility singleton; applied to live Supabase via MCP `apply_migration` (non-destructive). Seeded in `seed_data.py` so a reseed restores it.
+- [x] **`/api/v1/facility-settings`** GET (auto-create) + PUT (upsert) — `backend/app/api/v1/facility.py` + `schemas/facility.py` (`licensed_bed_count: int = Field(ge=1)`), registered in `main.py`.
+- [x] **Frontend**: regenerated `schema.d.ts`; `getFacilitySettings`/`updateFacilitySettings` in `domain.ts`; new `useFacilityStore`; bootstrap + `HydrationGate` hydration; both dead "Save all settings" buttons wired with a "Saved ✓" confirmation; dashboard census reads `licensedBedCount`.
+- [x] Verified: set 24 → Save → backend persisted → reload → census showed "20 / 24 beds · 83% · 4 available". Baseline restored to 55.
+
+### 9.2 Per-QAPI-item KPI cards (dashboard)
+
+- [x] **`frontend/src/lib/qapi/itemStats.ts`** — pure, unit-tested helpers: `qapiItemQuestionIds`, `qapiItemStats` (clean rate = `(answered − flagged) / answered`, daily series, per-question breakdown), `recurringQuestions`. Uses `answer.issueFlagged` (server-authoritative), not the fragile `questionText` match the old per-QAPI card uses.
+- [x] **`Sparkline.tsx`** ui primitive (axis-less Recharts area, auto-fit domain).
+- [x] New "QAPI Item Performance" dashboard section: one card per QAPI item with linked questions — clean rate %, daily sparkline, `{answered} answered · {flagged} with issues`, links to `/reports?qapiItem=<id>`. Existing per-QAPI compliance section retained.
+
+### 9.3 Reports — per-item scope, aggregate↔by-item toggle, recurring
+
+- [x] `reports/page.tsx` reads `?qapiItem=<id>` → scopes to the item's parent QAPI, switches to by-item mode, reuses `applyQapiRange()` to set the window from the QAPI lifecycle.
+- [x] "Report type" worksheet toggle (Aggregate vs By QAPI item). By-item renders one section per item: 4-cell scorecard (clean rate / answered / flagged / rounds), amber recurring-questions callout (≥3 issues, worst-first), per-question breakdown table. Aggregate path unchanged.
+
+### 9.4 Incidental fix — reseed left `qaa_meeting_notes` empty
+
+The user-requested demo reseed exposed that `seed_data.py` never seeded `qaa_meeting_notes` (Phase 8.4 backfilled it via a one-time MCP migration only), failing `TestQaaMeetingNotes::test_list_returns_seeded_or_imported_entries`. Added a seed entry so a reseed restores coherent demo state; suite back to fully green.
