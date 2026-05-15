@@ -46,6 +46,14 @@ export default function HydrationGate({
           rounds: data.rounds,
         });
         useIssuesStore.getState().hydrate(data.issues);
+        // Mark the document as "fresh" so the global .luxe-reveal-* keyframes
+        // fire for this first render only. Remove it after the longest
+        // reveal sequence has finished (~500ms of staggered animations +
+        // safety margin) so subsequent tab navigations feel instant.
+        document.documentElement.setAttribute('data-app-fresh', 'true');
+        window.setTimeout(() => {
+          document.documentElement.removeAttribute('data-app-fresh');
+        }, 1200);
         setStatus('ready');
       } catch (e) {
         if (cancelled) return;

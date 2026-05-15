@@ -152,14 +152,19 @@ body {
   100% { opacity: 1; }
 }
 
-.luxe-reveal-hero {
+/* The reveal animations are intentional editorial motion for the first
+ * impression. Replaying them on every tab click made navigation feel
+ * sluggish during demos, so we gate the keyframes behind an attribute
+ * that HydrationGate sets only for the initial app render. After it's
+ * removed (~1200ms later), the classes are inert and tab nav is instant. */
+html[data-app-fresh="true"] .luxe-reveal-hero {
   animation: luxe-rise 240ms var(--ease-luxe-out) both;
 }
-.luxe-reveal-stagger {
+html[data-app-fresh="true"] .luxe-reveal-stagger {
   animation: luxe-rise 240ms var(--ease-luxe-out) both;
   animation-delay: calc(120ms + var(--i, 0) * 60ms);
 }
-.luxe-reveal-body {
+html[data-app-fresh="true"] .luxe-reveal-body {
   animation: luxe-fade 220ms var(--ease-luxe) both;
   animation-delay: 280ms;
 }
