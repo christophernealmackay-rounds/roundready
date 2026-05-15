@@ -74,7 +74,14 @@
       "Bash(cmd *)",
       "PowerShell(Get-CimInstance *)",
       "Read(//c/c/Users/chris/projects/roundready/docs/**)",
-      "mcp__plugin_playwright_playwright__browser_console_messages"
+      "mcp__plugin_playwright_playwright__browser_console_messages",
+      "Bash(uvicorn app.main:app --reload --port 8000)",
+      "Skill(superpowers:brainstorming)",
+      "Bash(sed -n \"/export function mapQaaNote/,/^}/p\" frontend/src/lib/api/mappers.ts)",
+      "Bash(sed -n '1,35p' frontend/src/lib/api/domain.ts)",
+      "Bash(echo \"tsc exit: $?\")",
+      "mcp__plugin_playwright_playwright__browser_take_screenshot",
+      "mcp__plugin_playwright_playwright__browser_type"
     ]
   }
 }
