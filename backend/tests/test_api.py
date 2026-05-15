@@ -872,6 +872,7 @@ class TestRounds:
         )
         assert q_create.status_code == 201, q_create.text
         q = q_create.json()
+        round_ids: list[str] = []
         try:
             templates = (await client.get("/api/v1/rounds/templates")).json()
             active = next(t for t in templates if t["type"] == "angel" and t["active"])
@@ -898,10 +899,16 @@ class TestRounds:
                 },
             )
             assert r.status_code == 201, r.text
+            round_ids.append(r.json()["id"])
             assert r.json()["flags_raised"] == 1, (
                 "server should have computed issue_flagged=True from threshold"
             )
         finally:
+            # Delete the round first so the answer rows go with it; otherwise
+            # CASCADE on questions wipes only the answer and the round leaks
+            # as an orphan with zero answers.
+            for rid in round_ids:
+                await client.delete(f"/api/v1/rounds/{rid}")
             await client.delete(f"/api/v1/questions/{q['id']}")
 
     async def test_round_submit_scale_does_not_flag_below_gte_threshold(
@@ -919,6 +926,7 @@ class TestRounds:
         )
         assert q_create.status_code == 201, q_create.text
         q = q_create.json()
+        round_ids: list[str] = []
         try:
             templates = (await client.get("/api/v1/rounds/templates")).json()
             active = next(t for t in templates if t["type"] == "angel" and t["active"])
@@ -943,8 +951,11 @@ class TestRounds:
                 },
             )
             assert r.status_code == 201, r.text
+            round_ids.append(r.json()["id"])
             assert r.json()["flags_raised"] == 0
         finally:
+            for rid in round_ids:
+                await client.delete(f"/api/v1/rounds/{rid}")
             await client.delete(f"/api/v1/questions/{q['id']}")
 
     async def test_round_submit_scale_lte_direction(self, client: AsyncClient):
@@ -961,6 +972,7 @@ class TestRounds:
         )
         assert q_create.status_code == 201, q_create.text
         q = q_create.json()
+        round_ids: list[str] = []
         try:
             templates = (await client.get("/api/v1/rounds/templates")).json()
             active = next(t for t in templates if t["type"] == "angel" and t["active"])
@@ -984,6 +996,7 @@ class TestRounds:
                 },
             )
             assert r.status_code == 201, r.text
+            round_ids.append(r.json()["id"])
             assert r.json()["flags_raised"] == 1
 
             # Above threshold ⇒ no flag
@@ -1001,9 +1014,57 @@ class TestRounds:
                 },
             )
             assert r2.status_code == 201, r2.text
+            round_ids.append(r2.json()["id"])
             assert r2.json()["flags_raised"] == 0
         finally:
+            for rid in round_ids:
+                await client.delete(f"/api/v1/rounds/{rid}")
             await client.delete(f"/api/v1/questions/{q['id']}")
+
+    async def test_round_delete_removes_round_and_answers(
+        self, client: AsyncClient
+    ):
+        """DELETE /rounds/{id} removes the round and (via CASCADE on
+        round_answers.round_id) its answer rows, so tests that create
+        throwaway questions+rounds don't leak orphan rounds. 404 on a
+        bogus id."""
+        templates = (await client.get("/api/v1/rounds/templates")).json()
+        active = next(t for t in templates if t["type"] == "angel" and t["active"])
+        angels = (await client.get("/api/v1/angels")).json()
+        angel = next(a for a in angels if not a["absent"] and a["resident_count"] > 0)
+        residents = (await client.get("/api/v1/residents")).json()
+        resident = next(r for r in residents if r["angel_id"] == angel["id"])
+        # Use any existing question — we don't care about the answer's truth,
+        # just that the round + answer get created and then cleanly removed.
+        questions = (await client.get("/api/v1/questions")).json()
+        q = next(q for q in questions if q.get("type", "yesno") == "yesno")
+
+        created = await client.post(
+            "/api/v1/rounds",
+            json={
+                "template_id": active["id"],
+                "angel_id": angel["id"],
+                "resident_id": resident["id"],
+                "answers": [{
+                    "question_id": q["id"],
+                    "answer": True,
+                    "issue_flagged": False,
+                }],
+            },
+        )
+        assert created.status_code == 201, created.text
+        rid = created.json()["id"]
+
+        deleted = await client.delete(f"/api/v1/rounds/{rid}")
+        assert deleted.status_code == 204
+
+        # Round is gone; second delete is a 404.
+        again = await client.delete(f"/api/v1/rounds/{rid}")
+        assert again.status_code == 404
+
+        # And the round no longer surfaces in the listing.
+        listed = (await client.get("/api/v1/rounds")).json()
+        assert not any(r["id"] == rid for r in listed)
 
     async def test_template_create_rejects_inverted_dates(
         self, client: AsyncClient

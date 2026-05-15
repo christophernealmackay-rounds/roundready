@@ -372,6 +372,18 @@ async def remove_question_from_section(
     return None
 
 
+@router.delete("/{round_id}", status_code=204)
+async def delete_round(round_id: uuid.UUID, client: httpx.AsyncClient = Depends(get_db)):
+    db = DB(client)
+    rows = await db.select("rounds", {"id": f"eq.{round_id}"})
+    if not rows:
+        raise HTTPException(404, "Round not found")
+    # round_answers cascades via FK ON DELETE CASCADE; issues.round_id is
+    # ON DELETE SET NULL so resolved/open issues survive the round.
+    await db.delete("rounds", {"id": str(round_id)})
+    return None
+
+
 @router.get("", response_model=list[RoundOut])
 async def list_rounds(
     angel_id: Optional[str] = None,
