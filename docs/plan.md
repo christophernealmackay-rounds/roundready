@@ -569,9 +569,9 @@ Every component with logic gets a Vitest test. Minimum coverage:
 
 ---
 
-## Phase 8 — Demo polish iterations (2026-05-12 → 2026-05-13)
+## Phase 8 — Demo polish iterations (2026-05-12 → 2026-05-15)
 
-Two consecutive sessions of user-driven corrections walking the demo from front to back. Everything below is shipped to `origin/master` and verified live in the browser against the running Supabase project. Test counts: **backend pytest 61 → 74 (+13)**, **frontend vitest 22 → 33 (+11)**, build clean.
+Three sessions of user-driven corrections walking the demo from front to back, plus a post-demo perf + hygiene pass. Everything below is shipped to `origin/master` and verified live in the browser against the running Supabase project. Test counts: **backend pytest 61 → 75 (+14)**, **frontend vitest 22 → 33 (+11)**, build clean.
 
 ### 8.1 Rounds tab — four corrections
 
@@ -613,12 +613,39 @@ No code change; documented to prevent recurrence. After several `Stop-Process -I
 
 | Layer | Pre-Phase-8 | Post | Delta |
 |---|---|---|---|
-| pytest (live Supabase) | 61 | 74 | **+13** |
+| pytest (live Supabase) | 61 | 75 | **+14** |
 | vitest | 22 | 33 | **+11** |
 
-Coverage hot spots added: scale validator (3), scale flag computation gte+lte (3), notify-clear PATCH (1), QAA meeting CRUD (2), rapid deploy + idempotency + completion count (3); mapper round-trips for new fields (5), unwrap 204 behavior (3), findDuplicateDepartment (1), helper edge cases (2).
+Coverage hot spots added: scale validator (3), scale flag computation gte+lte (3), notify-clear PATCH (1), QAA meeting CRUD (2), rapid deploy + idempotency + completion count (3), round delete happy-path + 404 + listing-removal (1); mapper round-trips for new fields (5), unwrap 204 behavior (3), findDuplicateDepartment (1), helper edge cases (2).
 
-### 8.7 What's deferred
+### 8.7 Backend perf — N+1 collapse + shared httpx client
+
+Commit `b5ef40e`. Shipped 2026-05-15.
+
+- [x] **`list_angels` batched** — was issuing 3×N PostgREST round-trips (per-row user, department, resident-count lookups). Now 3 batched `IN (...)` queries total regardless of angel count.
+- [x] **Rounds template enrichment batched** — `_build_template_outs(templates, db)` collapses sections/template_questions/questions/rapid-completion-count into 4 batched queries for any number of templates. Extracted `_project_template_question` and reused in `update_section` (which had the same N+1). `_build_template_out` kept as a single-template convenience wrapper that delegates to the batched path — one code path.
+- [x] **Shared `httpx.AsyncClient`** — replaced per-request `async with httpx.AsyncClient(...)` with one client created in FastAPI `lifespan` and torn down at shutdown. TCP+TLS pool stays warm across requests (~50ms saved per round-trip on Windows, where keep-alive caching is weaker). `get_db()` falls back to a per-call client when no shared one is registered, so ad-hoc scripts and isolated tests still work.
+
+### 8.8 Tab navigation feel — gate luxe-reveal animations to first render
+
+Commit `6777840`. Shipped 2026-05-15.
+
+The editorial `.luxe-reveal-*` keyframes were replaying on every tab click, making intra-app navigation feel sluggish during demos. Scoped the selectors to `html[data-app-fresh="true"]` and have `HydrationGate` set the attribute on initial hydration, then drop it after 1200ms (longest reveal sequence + safety margin). Subsequent tab switches: classes are inert. No new animation logic, no library churn — pure CSS gating.
+
+### 8.9 `DELETE /rounds/{id}` + scale-test orphan-leak fix
+
+Commit `d1d5284`. Shipped 2026-05-15.
+
+`test_round_list_returns_full_answer_set` (the regression that guards against PostgREST's 1000-row cap on `/rounds` answers) was failing once the with-answers ratio dipped below 98%. Root cause: the three throwaway-question scale tests (`test_round_submit_scale_*` in `backend/tests/test_api.py`) created rounds that referenced a question they then deleted in `finally`. CASCADE on `round_answers.question_id` wiped the answer rows but left the round, leaking ~4 orphan rounds per pytest run. With no `DELETE /rounds/{id}` endpoint, the tests had no clean way to delete the round itself.
+
+- [x] **`DELETE /api/v1/rounds/{round_id}`** added to `backend/app/api/v1/rounds.py`. Status 204; 404 on bogus id. `round_answers` cascade via `round_answers.round_id ON DELETE CASCADE`; `issues.round_id` is `ON DELETE SET NULL` so resolved/open issues survive the round.
+- [x] **Three scale tests updated** — capture each created `round_id` and delete it before deleting the question.
+- [x] **New test** `test_round_delete_removes_round_and_answers` covers the endpoint's happy path, 404 on second delete, and absence from `/rounds` listing.
+- [x] **Existing 12 orphans pruned** via Supabase MCP (`DELETE FROM rounds WHERE NOT EXISTS (SELECT 1 FROM round_answers WHERE round_id = rounds.id)`). All 12 were on the active angel template with 0 answers, timestamps clustered into 3 prior pytest runs of 4 each — perfect signal-match for the known leak pattern.
+
+Verified: full backend suite re-run after the fix is **75/75 green**, including `test_round_list_returns_full_answer_set` running *after* the three scale tests in the same session.
+
+### 8.10 What's deferred
 
 - Reminders engine — `notification_prefs.reminders` is stored but unwired; only an in-app banner approach was discussed for demo. Real scheduler is out of scope until the dashboard pass lands.
 - Dashboard + Reports redesign — explicitly deferred by the user until after Phase 8 ships.
