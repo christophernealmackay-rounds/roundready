@@ -25,51 +25,102 @@ from app.schemas.round import (
 router = APIRouter(prefix="/rounds", tags=["rounds"])
 
 
-async def _build_template_out(t: dict, db: DB) -> dict:
+def _project_template_question(tq: dict, q: dict) -> dict:
+    return {
+        "id": tq["id"],
+        "question_id": q["id"],
+        "text": q["text"],
+        "section": q.get("section", ""),
+        "issue_on": q["issue_on"],
+        "notify_department_id": q.get("notify_department_id"),
+        "type": q.get("type", "yesno"),
+        "scale_min": q.get("scale_min"),
+        "scale_max": q.get("scale_max"),
+        "scale_threshold": q.get("scale_threshold"),
+        "scale_threshold_direction": q.get("scale_threshold_direction"),
+        "order": tq["order"],
+    }
+
+
+async def _build_template_outs(templates: list[dict], db: DB) -> list[dict]:
+    """Batched enrichment for any number of templates in O(1) round-trips.
+
+    Replaces the per-template, per-section, per-question N+1 with four
+    batched IN-queries: sections, template_questions, questions, and the
+    rapid-completion-count rollup. Order within sections / questions is
+    preserved by the `order` column.
+    """
+    if not templates:
+        return []
+
+    template_ids = [t["id"] for t in templates]
     sections = await db.select("template_sections", {
-        "template_id": f"eq.{t['id']}",
+        "template_id": f"in.({','.join(template_ids)})",
         "order": "order.asc",
     })
-    enriched_sections = []
+
+    sections_by_template: dict[str, list[dict]] = {}
     for s in sections:
+        sections_by_template.setdefault(s["template_id"], []).append(s)
+
+    section_ids = [s["id"] for s in sections]
+    tqs: list[dict] = []
+    if section_ids:
         tqs = await db.select("template_questions", {
-            "section_id": f"eq.{s['id']}",
+            "section_id": f"in.({','.join(section_ids)})",
             "order": "order.asc",
         })
-        questions = []
-        for tq in tqs:
-            qrows = await db.select("questions", {"id": f"eq.{tq['question_id']}"})
-            if not qrows:
-                continue
-            q = qrows[0]
-            questions.append({
-                "id": tq["id"],
-                "question_id": q["id"],
-                "text": q["text"],
-                "section": q.get("section", ""),
-                "issue_on": q["issue_on"],
-                "notify_department_id": q.get("notify_department_id"),
-                "type": q.get("type", "yesno"),
-                "scale_min": q.get("scale_min"),
-                "scale_max": q.get("scale_max"),
-                "scale_threshold": q.get("scale_threshold"),
-                "scale_threshold_direction": q.get("scale_threshold_direction"),
-                "order": tq["order"],
-            })
-        enriched_sections.append({**s, "questions": questions})
 
-    # Rapid rounds expose a completion count so admins can see uptake at a
-    # glance after deploying. Cheap COUNT — only ever a handful of rapid
-    # templates exist at once, so a per-template SELECT is fine.
-    rapid_completion_count = 0
-    if t.get("type") == "rapid" and t.get("deployed_at"):
-        completed = await db.select(
-            "rounds",
-            {"template_id": f"eq.{t['id']}", "select": "id"},
-        )
-        rapid_completion_count = len(completed)
+    tqs_by_section: dict[str, list[dict]] = {}
+    for tq in tqs:
+        tqs_by_section.setdefault(tq["section_id"], []).append(tq)
 
-    return {**t, "sections": enriched_sections, "rapid_completion_count": rapid_completion_count}
+    questions_by_id: dict[str, dict] = {}
+    question_ids = list({tq["question_id"] for tq in tqs})
+    if question_ids:
+        qrows = await db.select("questions", {
+            "id": f"in.({','.join(question_ids)})",
+        })
+        questions_by_id = {q["id"]: q for q in qrows}
+
+    rapid_counts: dict[str, int] = {}
+    rapid_ids = [
+        t["id"] for t in templates
+        if t.get("type") == "rapid" and t.get("deployed_at")
+    ]
+    if rapid_ids:
+        completed = await db.select("rounds", {
+            "template_id": f"in.({','.join(rapid_ids)})",
+            "select": "template_id",
+        })
+        for r in completed:
+            rapid_counts[r["template_id"]] = rapid_counts.get(r["template_id"], 0) + 1
+
+    out: list[dict] = []
+    for t in templates:
+        enriched_sections = []
+        for s in sections_by_template.get(t["id"], []):
+            qs = [
+                _project_template_question(tq, questions_by_id[tq["question_id"]])
+                for tq in tqs_by_section.get(s["id"], [])
+                if tq["question_id"] in questions_by_id
+            ]
+            enriched_sections.append({**s, "questions": qs})
+        out.append({
+            **t,
+            "sections": enriched_sections,
+            "rapid_completion_count": rapid_counts.get(t["id"], 0),
+        })
+    return out
+
+
+async def _build_template_out(t: dict, db: DB) -> dict:
+    """Single-template convenience for create/update/deploy paths.
+
+    Delegates to the batched helper so we have one code path to maintain.
+    """
+    result = await _build_template_outs([t], db)
+    return result[0]
 
 
 @router.get("/templates", response_model=list[RoundTemplateOut])
@@ -101,7 +152,7 @@ async def list_templates(client: httpx.AsyncClient = Depends(get_db)):
             # consistent without a re-fetch.
             t.update(updated)
 
-    return [await _build_template_out(t, db) for t in templates]
+    return await _build_template_outs(templates, db)
 
 
 @router.post("/templates", response_model=RoundTemplateOut, status_code=201)
@@ -237,30 +288,22 @@ async def update_section(
         section = await db.update("template_sections", {"id": str(section_id)}, payload)
     else:
         section = rows[0]
-    # Re-pull questions for the response.
+    # Re-pull questions for the response — batched lookup so a section
+    # with many questions stays one round-trip.
     tqs = await db.select("template_questions", {
         "section_id": f"eq.{section_id}",
         "order": "order.asc",
     })
     questions = []
-    for tq in tqs:
-        qrows = await db.select("questions", {"id": f"eq.{tq['question_id']}"})
-        if qrows:
-            q = qrows[0]
-            questions.append({
-                "id": tq["id"],
-                "question_id": q["id"],
-                "text": q["text"],
-                "section": q.get("section", ""),
-                "issue_on": q["issue_on"],
-                "notify_department_id": q.get("notify_department_id"),
-                "type": q.get("type", "yesno"),
-                "scale_min": q.get("scale_min"),
-                "scale_max": q.get("scale_max"),
-                "scale_threshold": q.get("scale_threshold"),
-                "scale_threshold_direction": q.get("scale_threshold_direction"),
-                "order": tq["order"],
-            })
+    if tqs:
+        qids = list({tq["question_id"] for tq in tqs})
+        qrows = await db.select("questions", {"id": f"in.({','.join(qids)})"})
+        questions_by_id = {q["id"]: q for q in qrows}
+        questions = [
+            _project_template_question(tq, questions_by_id[tq["question_id"]])
+            for tq in tqs
+            if tq["question_id"] in questions_by_id
+        ]
     return {**section, "questions": questions}
 
 

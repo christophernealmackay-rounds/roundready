@@ -1,10 +1,13 @@
 """
 Thin async client around the Supabase PostgREST REST API.
 Uses service_role_key which bypasses all RLS policies.
+
+Connection reuse: the FastAPI lifespan installs a single shared
+httpx.AsyncClient at startup and tears it down at shutdown
+(see app.main.lifespan). get_db() yields that singleton so every
+request reuses the same TCP+TLS connection pool — saving ~50ms
+per round-trip on Windows where keep-alive caching is weaker.
 """
-import os
-from functools import lru_cache
-from typing import Any
 import httpx
 from app.core.config import settings
 
@@ -16,12 +19,33 @@ HEADERS = {
 }
 
 
-def _client() -> httpx.AsyncClient:
+def _make_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(base_url=REST_BASE, headers=HEADERS, timeout=30.0)
 
 
+_shared_client: httpx.AsyncClient | None = None
+
+
+def set_shared_client(client: httpx.AsyncClient) -> None:
+    global _shared_client
+    _shared_client = client
+
+
+async def close_shared_client() -> None:
+    global _shared_client
+    if _shared_client is not None:
+        await _shared_client.aclose()
+        _shared_client = None
+
+
 async def get_db() -> httpx.AsyncClient:
-    async with _client() as c:
+    # Fast path: reuse the lifespan-managed singleton.
+    if _shared_client is not None:
+        yield _shared_client
+        return
+    # Fallback for callers that bypass the FastAPI lifespan
+    # (ad-hoc scripts, isolated unit tests). Behaves like before.
+    async with _make_client() as c:
         yield c
 
 

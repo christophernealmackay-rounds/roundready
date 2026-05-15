@@ -1,6 +1,9 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.db.client import _make_client, set_shared_client, close_shared_client
 from app.api.v1.health import router as health_router
 from app.api.v1.users import router as users_router
 from app.api.v1.departments import router as departments_router
@@ -16,7 +19,19 @@ from app.api.v1.qaa_notes import router as qaa_notes_router
 from app.api.v1.qaa_meeting_notes import router as qaa_meeting_notes_router
 from app.api.v1.admin import router as admin_router
 
-app = FastAPI(title="RoundReady API", version="1.0.0", docs_url="/docs")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # One shared httpx.AsyncClient for the app's lifetime — keeps the TCP
+    # connection pool warm across requests so PostgREST hops are ~50ms cheaper.
+    set_shared_client(_make_client())
+    try:
+        yield
+    finally:
+        await close_shared_client()
+
+
+app = FastAPI(title="RoundReady API", version="1.0.0", docs_url="/docs", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

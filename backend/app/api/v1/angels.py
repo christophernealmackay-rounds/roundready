@@ -35,9 +35,58 @@ async def _build_angel_out(angel: dict, db: DB) -> dict:
 
 @router.get("", response_model=list[AngelOut])
 async def list_angels(client: httpx.AsyncClient = Depends(get_db)):
+    """List all angels with enriched user/department/resident-count fields.
+
+    Batched: O(3) round-trips total regardless of angel count, vs. the
+    O(3 × N) the per-row _build_angel_out helper would do.
+    """
     db = DB(client)
     angels = await db.select("angels", {"order": "created_at.asc"})
-    return [await _build_angel_out(a, db) for a in angels]
+    if not angels:
+        return []
+
+    user_ids = list({a["user_id"] for a in angels})
+    dept_ids = list({a["department_id"] for a in angels if a.get("department_id")})
+    angel_ids = [a["id"] for a in angels]
+
+    users_by_id: dict[str, dict] = {}
+    if user_ids:
+        users_by_id = {
+            u["id"]: u
+            for u in await db.select("users", {
+                "id": f"in.({','.join(user_ids)})",
+                "select": "id,name",
+            })
+        }
+
+    depts_by_id: dict[str, dict] = {}
+    if dept_ids:
+        depts_by_id = {
+            d["id"]: d
+            for d in await db.select("departments", {
+                "id": f"in.({','.join(dept_ids)})",
+                "select": "id,name",
+            })
+        }
+
+    resident_counts: dict[str, int] = {}
+    if angel_ids:
+        for r in await db.select("residents", {
+            "angel_id": f"in.({','.join(angel_ids)})",
+            "status": "eq.active",
+            "select": "angel_id",
+        }):
+            resident_counts[r["angel_id"]] = resident_counts.get(r["angel_id"], 0) + 1
+
+    return [
+        {
+            **a,
+            "name": users_by_id.get(a["user_id"], {}).get("name", ""),
+            "department": depts_by_id.get(a.get("department_id") or "", {}).get("name"),
+            "resident_count": resident_counts.get(a["id"], 0),
+        }
+        for a in angels
+    ]
 
 
 @router.post("", response_model=AngelOut, status_code=201)
