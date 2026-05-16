@@ -81,7 +81,17 @@
       "Bash(sed -n '1,35p' frontend/src/lib/api/domain.ts)",
       "Bash(echo \"tsc exit: $?\")",
       "mcp__plugin_playwright_playwright__browser_take_screenshot",
-      "mcp__plugin_playwright_playwright__browser_type"
+      "mcp__plugin_playwright_playwright__browser_type",
+      "Bash(gh api *)",
+      "Bash(sed -n '786,800p' \"src/app/\\(app\\)/reports/page.tsx\")",
+      "Bash(sed -n '92,104p' \"src/app/\\(app\\)/residents/page.tsx\")",
+      "Bash(sed -n '344,368p' src/components/layout/Topbar.tsx)",
+      "Bash(sed -n '258,266p' \"src/app/\\(app\\)/dashboard/page.tsx\")",
+      "Bash(sed -n '85,110p' \"src/app/\\(app\\)/residents/page.tsx\")",
+      "Bash(sed -n '800,808p' \"src/app/\\(app\\)/reports/page.tsx\")",
+      "Bash(echo \"EXIT=$?\")",
+      "Read(//c/Users/chris/AppData/Local/Temp/claude/C--Users-chris-projects-roundready/14a8094a-f0d9-4eba-be01-8bbe7015dcad/**)",
+      "Read(//dev/**)"
     ]
   }
 }
