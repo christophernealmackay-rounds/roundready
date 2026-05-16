@@ -95,6 +95,8 @@ export default function ResidentsPage() {
               Auto-assign all
             </button>
             <button
+              disabled
+              title="Live PointClickCare sync is not available in this demo"
               style={{
                 fontSize: 12,
                 fontWeight: 500,
@@ -103,7 +105,8 @@ export default function ResidentsPage() {
                 border: "1px solid var(--hair-strong)",
                 background: "var(--surface)",
                 color: "var(--ink-soft)",
-                cursor: "pointer",
+                cursor: "not-allowed",
+                opacity: 0.5,
                 display: "flex",
                 alignItems: "center",
                 gap: 5,

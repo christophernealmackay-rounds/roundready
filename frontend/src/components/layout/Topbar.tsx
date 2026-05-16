@@ -346,7 +346,7 @@ export default function Topbar() {
                       <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>Primary notification email</div>
                       <input defaultValue="admin@sunrisegardens.com" style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--hair)", borderRadius: 8, fontSize: 12, background: "var(--surface-alt)", color: "var(--ink)", outline: "none" }} />
                     </div>
-                    <button style={{ padding: "7px 14px", borderRadius: 7, border: "none", background: "var(--blue)", color: "#fff", fontSize: 12, fontWeight: 500, cursor: "pointer" }}>Save changes</button>
+                    <button disabled title="Facility profile editing is not available in this demo" style={{ padding: "7px 14px", borderRadius: 7, border: "none", background: "var(--blue)", color: "#fff", fontSize: 12, fontWeight: 500, cursor: "not-allowed", opacity: 0.5 }}>Save changes</button>
                   </div>
 
                   <p style={{ fontSize: 10, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 10px" }}>Integrations</p>
@@ -362,7 +362,7 @@ export default function Topbar() {
                           <div style={{ fontSize: 11, color: "var(--muted)" }}>{intg.sub}</div>
                         </div>
                         <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 999, background: intg.statusBg, color: intg.statusColor }}>{intg.status}</span>
-                        {intg.btn && <button style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--hair-strong)", background: "var(--surface-alt)", color: "var(--ink-soft)", cursor: "pointer" }}>{intg.btn}</button>}
+                        {intg.btn && <button disabled title="Integration setup is not available in this demo" style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--hair-strong)", background: "var(--surface-alt)", color: "var(--ink-soft)", cursor: "not-allowed", opacity: 0.5 }}>{intg.btn}</button>}
                       </div>
                     ))}
                   </div>
@@ -420,8 +420,8 @@ export default function Topbar() {
                     </div>
                     <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 12 }}>Unlimited rounds · unlimited angels · compliance reports · email support · audit log exports</div>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <button style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid var(--hair-strong)", background: "var(--surface-alt)", color: "var(--ink-soft)", fontSize: 12, cursor: "pointer" }}>Manage billing</button>
-                      <button style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid var(--red-edge)", background: "var(--red-tint)", color: "var(--red)", fontSize: 12, cursor: "pointer" }}>Cancel plan</button>
+                      <button disabled title="Billing management is not available in this demo" style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid var(--hair-strong)", background: "var(--surface-alt)", color: "var(--ink-soft)", fontSize: 12, cursor: "not-allowed", opacity: 0.5 }}>Manage billing</button>
+                      <button disabled title="Billing management is not available in this demo" style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid var(--red-edge)", background: "var(--red-tint)", color: "var(--red)", fontSize: 12, cursor: "not-allowed", opacity: 0.5 }}>Cancel plan</button>
                     </div>
                   </div>
                 </div>

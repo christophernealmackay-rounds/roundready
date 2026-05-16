@@ -5,6 +5,7 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useRoundsStore } from "@/lib/store/useRoundsStore";
 import { useIssuesStore } from "@/lib/store/useIssuesStore";
 import { useResidentsStore } from "@/lib/store/useResidentsStore";
@@ -31,6 +32,7 @@ const DAY_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const TODAY = todayIsoDate();
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [range, setRange] = useState<Range>("week");
   const completedRounds = useRoundsStore((s) => s.completedRounds);
   const templates = useRoundsStore((s) => s.templates);
@@ -260,6 +262,7 @@ export default function DashboardPage() {
               ))}
             </div>
             <button
+              onClick={() => router.push("/reports")}
               style={{
                 fontSize: 12,
                 fontWeight: 500,

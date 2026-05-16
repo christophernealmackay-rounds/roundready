@@ -259,4 +259,19 @@ html[data-app-fresh="true"] .luxe-reveal-body {
     white-space: pre-wrap;
     margin: 0;
   }
+
+  /* Compliance report — reveal only the generated document, drop the
+     card chrome so it reads as a clean printed page / saved PDF. */
+  .report-print-target,
+  .report-print-target * {
+    visibility: visible;
+  }
+  .report-print-target {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    border: none !important;
+    box-shadow: none !important;
+    background: #fff !important;
+  }
 }

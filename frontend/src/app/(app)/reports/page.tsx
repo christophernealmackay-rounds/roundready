@@ -124,6 +124,7 @@ export default function ReportsPage() {
   const [ddOpen, setDdOpen] = useState(false);
   const [ddSearch, setDdSearch] = useState("");
   const [generated, setGenerated] = useState(false);
+  const [printRequested, setPrintRequested] = useState(false);
 
   const filteredRes = activeResidents.filter((r) => r.name.toLowerCase().includes(ddSearch.toLowerCase()));
   const allSelected = selectedResidents.size === activeResidents.length;
@@ -236,6 +237,91 @@ export default function ReportsPage() {
 
     return { rounds: inRange.length, rate: `${rate}%`, issues: issuesInRange.length, resolved, missed: 0, qapiBars, drilldown, itemReport };
   }, [completedRounds, issues, qapis, templates, questions, dateRange, customStart, customEnd, selectedQapi, selectedResidents, groupFilter, groups]);
+
+  // The generated document is shown once "Generate" was pressed or there's
+  // data in range. Both the JSX gate and the print effect key off this.
+  const reportVisible =
+    (generated || report.rounds > 0) &&
+    (reportMode === "aggregate"
+      ? report.qapiBars.length > 0
+      : report.itemReport.length > 0);
+
+  // Browser print-to-PDF. The @media print stylesheet isolates the
+  // .report-print-target card; everything else is hidden. We wait until the
+  // document is actually in the DOM before invoking the print dialog.
+  useEffect(() => {
+    if (printRequested && reportVisible) {
+      const id = window.setTimeout(() => {
+        window.print();
+        setPrintRequested(false);
+      }, 60);
+      return () => window.clearTimeout(id);
+    }
+  }, [printRequested, reportVisible]);
+
+  function handleGenerate() {
+    setGenerated(true);
+    requestAnimationFrame(() =>
+      document
+        .querySelector(".report-print-target")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+  }
+
+  function handleExportPdf() {
+    setGenerated(true);
+    setPrintRequested(true);
+  }
+
+  function handleExportCsv() {
+    const esc = (v: string | number) => {
+      const s = String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const rangeLabel =
+      dateRange === "custom" && customStart && customEnd
+        ? `${customStart}_to_${customEnd}`
+        : dateRange;
+    const lines: string[] = [];
+    lines.push(`Compliance report,${selectedQapi},${rangeLabel}`);
+    lines.push(
+      `Rounds completed,${report.rounds},Completion rate,${report.rate},Issues raised,${report.issues},Issues resolved,${report.resolved}`,
+    );
+    lines.push("");
+    if (reportMode === "aggregate") {
+      lines.push("Question,Yes,No,Issues");
+      for (const d of report.drilldown) {
+        lines.push([esc(d.question), d.yes, d.no, d.issues].join(","));
+      }
+    } else {
+      lines.push("QAPI Item,Clean rate %,Answered,Flagged,Question,Yes,No,Issues");
+      for (const it of report.itemReport) {
+        for (const q of it.byQuestion) {
+          lines.push(
+            [
+              esc(it.itemTitle),
+              it.cleanRate ?? "",
+              it.answered,
+              it.flagged,
+              esc(q.text),
+              q.yes,
+              q.no,
+              q.issues,
+            ].join(","),
+          );
+        }
+      }
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `roundready-report-${rangeLabel}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <div className="max-w-[1200px] mx-auto" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -450,7 +536,7 @@ export default function ReportsPage() {
 
         <div style={{ display: "flex", gap: 8, paddingTop: 14, borderTop: "1px solid var(--hair-soft)" }}>
           <button
-            onClick={() => setGenerated(true)}
+            onClick={handleGenerate}
             style={{
               padding: "9px 18px",
               borderRadius: 8,
@@ -468,10 +554,10 @@ export default function ReportsPage() {
           >
             <FileText size={13} /> Generate report
           </button>
-          <button style={{ padding: "9px 14px", borderRadius: 8, border: "1px solid var(--hair-strong)", background: "var(--surface)", color: "var(--ink-soft)", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, boxShadow: "var(--shadow-card)" }}>
+          <button onClick={handleExportPdf} style={{ padding: "9px 14px", borderRadius: 8, border: "1px solid var(--hair-strong)", background: "var(--surface)", color: "var(--ink-soft)", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, boxShadow: "var(--shadow-card)" }}>
             <Download size={12} /> Export PDF
           </button>
-          <button style={{ padding: "9px 14px", borderRadius: 8, border: "1px solid var(--hair-strong)", background: "var(--surface)", color: "var(--ink-soft)", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, boxShadow: "var(--shadow-card)" }}>
+          <button onClick={handleExportCsv} style={{ padding: "9px 14px", borderRadius: 8, border: "1px solid var(--hair-strong)", background: "var(--surface)", color: "var(--ink-soft)", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, boxShadow: "var(--shadow-card)" }}>
             <Download size={12} /> Export CSV
           </button>
         </div>
@@ -482,10 +568,11 @@ export default function ReportsPage() {
           metadata sits in mono on the right; the scorecard grid + drilldown
           stack below as if they were typeset on the same page. The whole
           block sits on a slightly warmer surface to evoke paper. */}
-      {(generated || report.rounds > 0) && (reportMode === "aggregate" ? report.qapiBars.length > 0 : report.itemReport.length > 0) && (
+      {reportVisible && (
         <RefinedCard
           revealIndex={1}
           padding="32px 40px 28px"
+          className="report-print-target"
           style={{
             background: "linear-gradient(180deg, var(--surface), var(--surface-alt))",
           }}
@@ -790,6 +877,8 @@ export default function ReportsPage() {
               </div>
             </div>
             <button
+              disabled
+              title="Archived report storage is not available in this demo"
               style={{
                 fontSize: 11,
                 padding: "5px 12px",
@@ -797,7 +886,8 @@ export default function ReportsPage() {
                 border: "1px solid var(--hair-strong)",
                 background: "var(--surface)",
                 color: "var(--ink-soft)",
-                cursor: "pointer",
+                cursor: "not-allowed",
+                opacity: 0.5,
                 display: "flex",
                 alignItems: "center",
                 gap: 5,
