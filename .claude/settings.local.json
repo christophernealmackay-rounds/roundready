@@ -91,7 +91,9 @@
       "Bash(sed -n '800,808p' \"src/app/\\(app\\)/reports/page.tsx\")",
       "Bash(echo \"EXIT=$?\")",
       "Read(//c/Users/chris/AppData/Local/Temp/claude/C--Users-chris-projects-roundready/14a8094a-f0d9-4eba-be01-8bbe7015dcad/**)",
-      "Read(//dev/**)"
+      "Read(//dev/**)",
+      "Skill(superpowers:systematic-debugging)",
+      "mcp__plugin_playwright_playwright__browser_run_code_unsafe"
     ]
   }
 }
