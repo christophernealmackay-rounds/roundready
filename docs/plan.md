@@ -679,3 +679,47 @@ The Settings "Save all settings" button was a no-op stub; bed count was local `u
 ### 9.4 Incidental fix — reseed left `qaa_meeting_notes` empty
 
 The user-requested demo reseed exposed that `seed_data.py` never seeded `qaa_meeting_notes` (Phase 8.4 backfilled it via a one-time MCP migration only), failing `TestQaaMeetingNotes::test_list_returns_seeded_or_imported_entries`. Added a seed entry so a reseed restores coherent demo state; suite back to fully green.
+
+---
+
+## Phase 10 — Report PDF/CSV export + app-wide dead-button audit (2026-05-15)
+
+Commits `f450c21` (feature) · `a47a235` (chore). On `origin/master`. User reported the Reports "Generate report" button "did nothing" and asked for a PDF, plus an audit of dead buttons everywhere.
+
+Findings: 185 buttons total; 9 had no handler. Decisions (confirmed with user): PDF via **browser print-to-PDF** (zero-dep, matches the existing QAA print pattern) not a jsPDF/html2canvas library; no-backend MVP stubs **disabled with a hint** rather than faked.
+
+- [x] **Generate report** → reveals + smooth-scrolls to the report document (it auto-shows when data exists, which is why it *felt* dead).
+- [x] **Export PDF** → `window.print()` gated on a `printRequested` effect so the doc is in the DOM first; print stylesheet isolates the report card.
+- [x] **Export CSV** → client-side Blob download; aggregate emits the question drilldown, by-item emits per-item × per-question rows. Verified end-to-end via Playwright (`roundready-report-month.csv` downloaded).
+- [x] **Dashboard "Export compliance report"** → `router.push('/reports')`.
+- [x] **5 no-backend MVP stubs disabled-with-hint** — Topbar "Save changes" (facility profile), integration "Connect", "Manage billing", "Cancel plan"; Residents "Sync from PCC"; the mock per-row "PDF" on previously-generated reports. Each `disabled` + `title="… not available in this demo"` + dimmed.
+- [x] Audit method: a Python scanner parsed every `<button>` opening tag (brace/quote-aware) for missing `onClick` / no-op handlers; re-run confirmed zero truly-dead buttons remain (wired or explicitly disabled). `tsc` + build clean.
+
+## Phase 11 — Fix blank report PDF: Turbopack dev `@media`-block bug (2026-05-18)
+
+Commits `df0c8cb` (fix) · `86c3479` (chore). On `origin/master`. User reported the Export PDF print preview was **blank**. Resolved with the systematic-debugging skill (evidence before fixes).
+
+Root cause (proven, not guessed): the production build was **always correct** (`.next/static` CSS contained the `report-print-target` rules ×3); only Turbopack's **dev** server dropped them. The Phase-10 report print rules had been appended to the *end of the pre-existing QAA `@media print` block* — Turbopack dev incremental CSS truncates rules added after the cached block, so dev served the block ending at `.qaa-print-content` (proven via CSSOM walk + fetching the served stylesheet bytes: `report-print-target` count = 0 in dev, 3 in prod). `body * { visibility:hidden }` then had nothing to re-reveal → blank.
+
+- [x] Moved the report print rules into their **own standalone `@media print` block** (compiled wholesale; survives Turbopack dev). One small CSS change, no logic touched.
+- [x] Cleared `.next` cache + restarted dev; re-verified via CSSOM (rule present) and print-emulation screenshot — only the report document renders (masthead, scorecard, chart, drilldown, footer), zero app chrome.
+- [x] Confirmed QAA print path unaffected (separate block; both rule sets present).
+
+## Phase 12 — Angel flag notes: issue context captured during rounds (2026-05-18)
+
+Branch **`feat/angel-flag-notes`**, commit `ae47fcf`, pushed to origin. **PR open, awaiting user review/merge** (compare URL handed to user; `gh` unavailable locally). First feature on the new PR-based git workflow. Planned remotely (Ultraplan); the cloud session couldn't push (no GitHub creds) and `/teleport` wouldn't surface it, so implemented locally from the approved spec.
+
+Need: a flagged round answer gave the resolver no context (only question text). Decisions (confirmed): description is **required** (client gate + 422 server backstop), **inline per-question**. Field named `flag_notes` (symmetric with `resolution_notes`).
+
+- [x] **DB**: `issues.flag_notes TEXT` in `db/schema.sql` + applied to live Supabase via MCP `apply_migration` (idempotent `ALTER`, no alembic).
+- [x] **submit_round**: extracted `_compute_flagged` helper; validates **before** the round insert (no orphan round) and raises 422 if a flagged answer lacks notes; threads `flag_notes` into the issue insert.
+- [x] **Schemas**: `RoundAnswerSubmit.flag_notes` + `IssueOut.flag_notes`; `schema.d.ts` regenerated. `list_issues` passes it through via the existing row spread.
+- [x] **Seed**: `FLAG_NOTES_POOL` of 12 realistic SNF observations on every seeded issue (open + resolved); added to the COPY column list. Reseed verified 30/30.
+- [x] **AngelRoundFlow**: exported pure `computeFlag(q, value)` (mirrors backend); inline required "Describe what you observed" textarea appears when the answer flags; auto-advance suppressed on flag; Next/Submit gated until the note is non-blank.
+- [x] **Issues tab**: "Angel observed: …" on each list row + "What the angel observed" blue-wash callout above resolution notes in the resolve modal.
+- [x] **Tests**: backend pytest **79** (77 → +2: 422-on-missing, persistence; also patched 6 existing flagging tests that would now 422). Frontend vitest **46** (42 → +4: `computeFlag` truth table, `mapIssue` round-trip). `tsc` + build clean.
+- [x] **Playwright end-to-end**: round flagged on answer → required textarea appeared → advance control **disabled before note, enabled after**; resolver sees the note in the list row and the resolve modal; seeded issues display their notes.
+
+### 12.1 Process note — Ultraplan / teleport credential gap
+
+The Claude Code web (Ultraplan) session has no GitHub credentials, so it could neither push a branch nor open a PR, and `/teleport` never surfaced the session (it needs transferable committed changes). The credentialed steps (live Supabase `ALTER`, pytest against live DB, `gen:api`, reseed) are local-only by nature. **Habit:** for cross-stack work, treat the web session as design/scaffold-only; do the DB-touching + verification + PR locally.
