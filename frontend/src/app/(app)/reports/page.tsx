@@ -62,6 +62,8 @@ export default function ReportsPage() {
   // Set true when the custom range was filled from a QAPI selection, so we
   // can surface a small "Range set from selected QAPI" hint to the user.
   const [rangeFromQapi, setRangeFromQapi] = useState(false);
+  // By-item report scope: "all" = no item filter, else a specific item id.
+  const [selectedItemId, setSelectedItemId] = useState<string>("all");
 
   // When a specific QAPI is selected, switch to a custom range that matches
   // its lifecycle (date_identified through actual_completion, or today if
@@ -85,6 +87,8 @@ export default function ReportsPage() {
   function pickQapi(title: string) {
     setSelectedQapi(title);
     applyQapiRange(title);
+    // A specific item belongs to one QAPI — clear it when the QAPI changes.
+    setSelectedItemId("all");
   }
 
   // Apply ?qapi=<id> on mount/hydrate so dashboard click-through pre-filters
@@ -112,6 +116,8 @@ export default function ReportsPage() {
       setSelectedQapi(parent.title);
       applyQapiRange(parent.title);
       setReportMode("byItem");
+      // Pre-filter to the exact item the user clicked (still editable here).
+      setSelectedItemId(qapiItemIdFromUrl);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qapiItemIdFromUrl, qapis]);
@@ -154,6 +160,33 @@ export default function ReportsPage() {
     return rangeEnd(dateRange);
   }
 
+  const activeTemplate = useMemo(
+    () => templates.find((t) => t.active && t.type === "angel"),
+    [templates],
+  );
+
+  // Items selectable in the by-item dropdown — same QAPI scope and
+  // linked-questions filter the by-item report itself uses.
+  const itemOptions = useMemo(() => {
+    const scoped = qapis.filter((q) =>
+      selectedQapi === "All QAPIs" ? q.status === "active" : q.title === selectedQapi,
+    );
+    return scoped.flatMap((q) =>
+      [...q.items]
+        .sort((a, b) => a.order - b.order)
+        .filter((it) => qapiItemQuestionIds(it, activeTemplate).size > 0)
+        .map((it) => ({
+          id: it.id,
+          label: selectedQapi === "All QAPIs" ? `${q.title} — ${it.title}` : it.title,
+        })),
+    );
+  }, [qapis, selectedQapi, activeTemplate]);
+
+  // Coerce a stale selection (e.g. after the QAPI changed) back to "all".
+  const effectiveItemId = itemOptions.some((o) => o.id === selectedItemId)
+    ? selectedItemId
+    : "all";
+
   const report = useMemo(() => {
     const start = effectiveStart();
     const end = effectiveEnd();
@@ -185,7 +218,6 @@ export default function ReportsPage() {
     const rate = totalAnswers > 0 ? Math.round((yesAnswers / totalAnswers) * 100) : 0;
 
     // Per QAPI breakdown
-    const activeTemplate = templates.find((t) => t.active && t.type === "angel");
     // Include archived QAPIs when explicitly selected — reports about
     // completed PIPs are a primary use case for the new lifecycle flow.
     // For "All QAPIs" keep the existing active-only filter.
@@ -233,10 +265,10 @@ export default function ReportsPage() {
             recurring: recurringQuestions(stats.byQuestion),
           };
         }),
-    );
+    ).filter((it) => effectiveItemId === "all" || it.itemId === effectiveItemId);
 
     return { rounds: inRange.length, rate: `${rate}%`, issues: issuesInRange.length, resolved, missed: 0, qapiBars, drilldown, itemReport };
-  }, [completedRounds, issues, qapis, templates, questions, dateRange, customStart, customEnd, selectedQapi, selectedResidents, groupFilter, groups]);
+  }, [completedRounds, issues, qapis, templates, questions, dateRange, customStart, customEnd, selectedQapi, selectedResidents, groupFilter, groups, activeTemplate, effectiveItemId]);
 
   // The generated document is shown once "Generate" was pressed or there's
   // data in range. Both the JSX gate and the print effect key off this.
@@ -450,6 +482,33 @@ export default function ReportsPage() {
               {qapis.map((q) => <option key={q.id}>{q.title}</option>)}
             </select>
           </div>
+
+          {/* QAPI item — only meaningful for the by-item report */}
+          {reportMode === "byItem" && (
+            <div>
+              <SectionLabel accent="muted" style={{ marginBottom: 7 }}>QAPI item</SectionLabel>
+              <select
+                value={effectiveItemId}
+                onChange={(e) => setSelectedItemId(e.target.value)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid var(--hair-strong)",
+                  background: "var(--surface)",
+                  fontSize: 12,
+                  color: "var(--ink)",
+                  outline: "none",
+                  cursor: "pointer",
+                  boxShadow: "var(--shadow-card)",
+                }}
+              >
+                <option value="all">All items</option>
+                {itemOptions.map((o) => (
+                  <option key={o.id} value={o.id}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Report type */}
           <div>
