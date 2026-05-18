@@ -93,7 +93,10 @@
       "Read(//c/Users/chris/AppData/Local/Temp/claude/C--Users-chris-projects-roundready/14a8094a-f0d9-4eba-be01-8bbe7015dcad/**)",
       "Read(//dev/**)",
       "Skill(superpowers:systematic-debugging)",
-      "mcp__plugin_playwright_playwright__browser_run_code_unsafe"
+      "mcp__plugin_playwright_playwright__browser_run_code_unsafe",
+      "Bash(command -v gh)",
+      "Bash(awk '/__TRACKED_VAR__: \\\\{/{f=1} f{print NR\": \"$0} f&&/^        };/{exit}' src/lib/api/schema.d.ts)",
+      "Bash(awk 'NR>=44 && NR<=205' \"frontend/src/app/\\(app\\)/dashboard/page.tsx\")"
     ]
   }
 }
