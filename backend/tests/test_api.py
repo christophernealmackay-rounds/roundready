@@ -764,6 +764,7 @@ class TestRounds:
                         "question_id": nursing_q["id"],
                         "answer": False,
                         "issue_flagged": True,
+                        "flag_notes": "Observed during round; flagging for follow-up.",
                     },
                 ],
             },
@@ -839,6 +840,7 @@ class TestRounds:
                         "question_id": flag_no_question["question_id"],
                         "answer": False,         # No
                         "issue_flagged": True,   # frontend computed it
+                        "flag_notes": "Observed during round; flagging for follow-up.",
                     },
                 ],
             },
@@ -894,6 +896,7 @@ class TestRounds:
                             "answer_number": 8,
                             # Client lies and says no flag — server must override.
                             "issue_flagged": False,
+                            "flag_notes": "Pain reported at 8/10 during the round.",
                         },
                     ],
                 },
@@ -992,6 +995,7 @@ class TestRounds:
                         "question_id": q["id"],
                         "answer": None, "answer_number": 1,
                         "issue_flagged": False,
+                        "flag_notes": "Meal satisfaction reported very low (1/5).",
                     }],
                 },
             )
@@ -1049,6 +1053,8 @@ class TestRounds:
                     "question_id": q["id"],
                     "answer": True,
                     "issue_flagged": False,
+                    # Defensive: picked question's issue_on is seed-dependent.
+                    "flag_notes": "n/a — round delete test.",
                 }],
             },
         )
@@ -1065,6 +1071,105 @@ class TestRounds:
         # And the round no longer surfaces in the listing.
         listed = (await client.get("/api/v1/rounds")).json()
         assert not any(r["id"] == rid for r in listed)
+
+    async def test_flagged_answer_requires_flag_notes(self, client: AsyncClient):
+        """A flagging answer with no flag_notes is a 422 — the resolver must
+        always get the angel's context. Server recomputes the flag, so the
+        client cannot bypass this by lying about issue_flagged."""
+        q_create = await client.post(
+            "/api/v1/questions",
+            json={
+                "text": "Test flag-notes 1-10?", "type": "scale",
+                "scale_min": 1, "scale_max": 10,
+                "scale_threshold": 7, "scale_threshold_direction": "gte",
+                "in_repository": False,
+            },
+        )
+        assert q_create.status_code == 201, q_create.text
+        q = q_create.json()
+        round_ids: list[str] = []
+        try:
+            templates = (await client.get("/api/v1/rounds/templates")).json()
+            active = next(t for t in templates if t["type"] == "angel" and t["active"])
+            angels = (await client.get("/api/v1/angels")).json()
+            angel = next(a for a in angels if not a["absent"] and a["resident_count"] > 0)
+            residents = (await client.get("/api/v1/residents")).json()
+            resident = next(r for r in residents if r["angel_id"] == angel["id"])
+            body = {
+                "template_id": active["id"],
+                "angel_id": angel["id"],
+                "resident_id": resident["id"],
+                "answers": [{
+                    "question_id": q["id"], "answer": None,
+                    "answer_number": 8, "issue_flagged": False,
+                }],
+            }
+            # Missing flag_notes → 422.
+            r = await client.post("/api/v1/rounds", json=body)
+            assert r.status_code == 422, r.text
+            # Whitespace-only is also rejected.
+            body["answers"][0]["flag_notes"] = "   "
+            r = await client.post("/api/v1/rounds", json=body)
+            assert r.status_code == 422, r.text
+            # A non-flagging answer needs no notes.
+            body["answers"][0]["answer_number"] = 3
+            del body["answers"][0]["flag_notes"]
+            r = await client.post("/api/v1/rounds", json=body)
+            assert r.status_code == 201, r.text
+            round_ids.append(r.json()["id"])
+        finally:
+            for rid in round_ids:
+                await client.delete(f"/api/v1/rounds/{rid}")
+            await client.delete(f"/api/v1/questions/{q['id']}")
+
+    async def test_flag_notes_persist_on_issue(self, client: AsyncClient):
+        """flag_notes provided at submit are stored on the created issue and
+        returned by GET /issues so the resolver sees what the angel observed."""
+        q_create = await client.post(
+            "/api/v1/questions",
+            json={
+                "text": "Test flag-notes persist?", "type": "scale",
+                "scale_min": 1, "scale_max": 10,
+                "scale_threshold": 7, "scale_threshold_direction": "gte",
+                "in_repository": False,
+            },
+        )
+        assert q_create.status_code == 201, q_create.text
+        q = q_create.json()
+        note = "Resident reported sharp hip pain at 9/10 during transfer."
+        round_ids: list[str] = []
+        try:
+            templates = (await client.get("/api/v1/rounds/templates")).json()
+            active = next(t for t in templates if t["type"] == "angel" and t["active"])
+            angels = (await client.get("/api/v1/angels")).json()
+            angel = next(a for a in angels if not a["absent"] and a["resident_count"] > 0)
+            residents = (await client.get("/api/v1/residents")).json()
+            resident = next(r for r in residents if r["angel_id"] == angel["id"])
+            r = await client.post(
+                "/api/v1/rounds",
+                json={
+                    "template_id": active["id"],
+                    "angel_id": angel["id"],
+                    "resident_id": resident["id"],
+                    "answers": [{
+                        "question_id": q["id"], "answer": None,
+                        "answer_number": 9, "issue_flagged": False,
+                        "flag_notes": f"  {note}  ",  # trimmed server-side
+                    }],
+                },
+            )
+            assert r.status_code == 201, r.text
+            rid = r.json()["id"]
+            round_ids.append(rid)
+            assert r.json()["flags_raised"] == 1
+
+            issues = (await client.get("/api/v1/issues")).json()
+            mine = next(i for i in issues if i.get("round_id") == rid)
+            assert mine["flag_notes"] == note  # stripped
+        finally:
+            for rid in round_ids:
+                await client.delete(f"/api/v1/rounds/{rid}")
+            await client.delete(f"/api/v1/questions/{q['id']}")
 
     async def test_template_create_rejects_inverted_dates(
         self, client: AsyncClient
@@ -1384,6 +1489,9 @@ class TestRapidRoundDeploy:
                         "answer": True,
                         "answer_number": None,
                         "issue_flagged": False,
+                        # Defensive: the picked question's issue_on is seed-
+                        # dependent; include notes so a flag can't 422 this.
+                        "flag_notes": "n/a — rapid round completion test.",
                     }],
                 },
             )

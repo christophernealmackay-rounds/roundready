@@ -464,6 +464,27 @@ async def list_rounds(
     return out
 
 
+def _compute_flagged(q: dict, ans) -> bool:
+    """Authoritative server-side flag. yes/no matches AngelRoundFlow;
+    scale uses the question's threshold + direction."""
+    qtype = q.get("type", "yesno")
+    if qtype == "scale" and ans.answer_number is not None:
+        threshold = q.get("scale_threshold")
+        direction = q.get("scale_threshold_direction")
+        if threshold is not None and direction == "gte":
+            return ans.answer_number >= threshold
+        if threshold is not None and direction == "lte":
+            return ans.answer_number <= threshold
+        return False
+    if qtype == "yesno" and ans.answer is not None:
+        issue_on = q.get("issue_on", "either")
+        if issue_on == "yes":
+            return bool(ans.answer)
+        if issue_on == "no":
+            return not bool(ans.answer)
+    return False
+
+
 @router.post("", response_model=RoundOut, status_code=201)
 async def submit_round(body: RoundSubmit, client: httpx.AsyncClient = Depends(get_db)):
     """
@@ -471,6 +492,26 @@ async def submit_round(body: RoundSubmit, client: httpx.AsyncClient = Depends(ge
     issues + notifications for any flagged answers.
     """
     db = DB(client)
+
+    # Pre-fetch every referenced question so we can compute issue_flagged
+    # authoritatively server-side (clients can lie or get stale).
+    referenced_ids = list({str(a.question_id) for a in body.answers})
+    q_lookup: dict[str, dict] = {}
+    if referenced_ids:
+        ids_csv = ",".join(referenced_ids)
+        q_rows = await db.select("questions", {"id": f"in.({ids_csv})"})
+        q_lookup = {r["id"]: r for r in q_rows}
+
+    # Validate BEFORE writing anything: a flagged answer must carry the
+    # angel's description, else the resolver has no context. Raising here
+    # avoids orphaning a round row with a partial set of answers.
+    for ans in body.answers:
+        q = q_lookup.get(str(ans.question_id), {})
+        if _compute_flagged(q, ans) and not (ans.flag_notes or "").strip():
+            raise HTTPException(
+                422,
+                "flag_notes is required for answers that flag an issue",
+            )
 
     round_id = str(uuid.uuid4())
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -483,35 +524,9 @@ async def submit_round(body: RoundSubmit, client: httpx.AsyncClient = Depends(ge
     })
 
     flags_raised = 0
-    # Pre-fetch every question referenced in this submission so we can compute
-    # issue_flagged authoritatively server-side (clients can lie or get stale).
-    referenced_ids = list({str(a.question_id) for a in body.answers})
-    q_lookup: dict[str, dict] = {}
-    if referenced_ids:
-        ids_csv = ",".join(referenced_ids)
-        q_rows = await db.select("questions", {"id": f"in.({ids_csv})"})
-        q_lookup = {r["id"]: r for r in q_rows}
-
     for ans in body.answers:
         q = q_lookup.get(str(ans.question_id), {})
-        qtype = q.get("type", "yesno")
-
-        # Authoritative flag computation. For yes/no: matches AngelRoundFlow.
-        # For scale: threshold + direction from the question definition.
-        flagged = False
-        if qtype == "scale" and ans.answer_number is not None:
-            threshold = q.get("scale_threshold")
-            direction = q.get("scale_threshold_direction")
-            if threshold is not None and direction == "gte":
-                flagged = ans.answer_number >= threshold
-            elif threshold is not None and direction == "lte":
-                flagged = ans.answer_number <= threshold
-        elif qtype == "yesno" and ans.answer is not None:
-            issue_on = q.get("issue_on", "either")
-            if issue_on == "yes":
-                flagged = bool(ans.answer)
-            elif issue_on == "no":
-                flagged = not bool(ans.answer)
+        flagged = _compute_flagged(q, ans)
 
         await db.insert("round_answers", {
             "id": str(uuid.uuid4()),
@@ -533,6 +548,7 @@ async def submit_round(body: RoundSubmit, client: httpx.AsyncClient = Depends(ge
                 "angel_id": str(body.angel_id),
                 "department_id": dept_id,
                 "status": "open",
+                "flag_notes": (ans.flag_notes or "").strip(),
             })
             # Notify the first user in that department (if any).
             if dept_id:

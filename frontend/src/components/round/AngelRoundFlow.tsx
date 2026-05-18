@@ -8,6 +8,24 @@ import type { RoundTemplate, TemplateQuestion } from "@/lib/types";
 
 type Step = "pick-resident" | "questions" | "submitting" | "done";
 
+/** Authoritative client-side flag (mirrors backend submit_round). Exported
+ *  for unit testing and reused for the inline-textarea trigger + submit. */
+export function computeFlag(
+  q: Pick<TemplateQuestion, "type" | "issueOn" | "scaleThreshold" | "scaleThresholdDirection">,
+  value: boolean | number | undefined,
+): boolean {
+  if (q.type === "scale" && typeof value === "number") {
+    const t = q.scaleThreshold;
+    if (t == null) return false;
+    return q.scaleThresholdDirection === "lte" ? value <= t : value >= t;
+  }
+  if (typeof value === "boolean") {
+    if (q.issueOn === "yes") return value;
+    if (q.issueOn === "no") return !value;
+  }
+  return false;
+}
+
 // Question + its sourcing context. We dedup by questionId for the visible
 // flow (the angel sees each question once) but keep track of every template
 // that referenced it so submit can fan out to one round per template.
@@ -85,6 +103,9 @@ export default function AngelRoundFlow({ template, rapidTemplates = [], onClose 
   // keyed by question id. Allows the angel to navigate back and forward
   // without losing prior answers.
   const [answers, setAnswers] = useState<Record<string, boolean | number>>({});
+  // Angel's free-text description, keyed by question id. Required before
+  // submit whenever that question's answer flags an issue.
+  const [flagNotes, setFlagNotes] = useState<Record<string, string>>({});
 
   const currentResident = residents.find((r) => r.id === residentId);
   const currentQuestion = allQuestions[qIndex];
@@ -93,8 +114,19 @@ export default function AngelRoundFlow({ template, rapidTemplates = [], onClose 
   function answer(value: boolean | number) {
     if (!currentQuestion) return;
     setAnswers((a) => ({ ...a, [currentQuestion.questionId]: value }));
-    if (qIndex < totalQ - 1) setQIndex((i) => i + 1);
+    // If the answer flags, stay on this question so the angel can fill in
+    // the required description before advancing. Otherwise auto-advance.
+    if (!computeFlag(currentQuestion, value) && qIndex < totalQ - 1) {
+      setQIndex((i) => i + 1);
+    }
   }
+
+  // Any answered question that flags but has no (non-whitespace) note blocks
+  // submission — the resolver must always get the angel's context.
+  const flaggedNoteMissing = allQuestions.some((q) => {
+    const v = answers[q.questionId];
+    return computeFlag(q, v) && !(flagNotes[q.questionId] ?? "").trim();
+  });
 
   async function submit() {
     if (!angel || !residentId) return;
@@ -108,31 +140,27 @@ export default function AngelRoundFlow({ template, rapidTemplates = [], onClose 
       answer: boolean | null;
       answerNumber: number | null;
       issueFlagged: boolean;
+      flagNotes: string | null;
     };
     // Type-only placeholder to give Map's value shape a name.
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const submissionEntry: SubmissionEntry = { questionId: "", answer: null, answerNumber: null, issueFlagged: false };
+    const submissionEntry: SubmissionEntry = { questionId: "", answer: null, answerNumber: null, issueFlagged: false, flagNotes: null };
     for (const q of allQuestions) {
       const value = answers[q.questionId];
       let answerBool: boolean | null = null;
       let answerNumber: number | null = null;
-      let flagged = false;
       if (q.type === "scale" && typeof value === "number") {
         answerNumber = value;
-        const t = q.scaleThreshold;
-        if (t != null) {
-          flagged = q.scaleThresholdDirection === "lte" ? value <= t : value >= t;
-        }
       } else if (typeof value === "boolean") {
         answerBool = value;
-        if (q.issueOn === "yes") flagged = value;
-        else if (q.issueOn === "no") flagged = !value;
       }
+      const flagged = computeFlag(q, value);
       const entry: SubmissionEntry = {
         questionId: q.questionId,
         answer: answerBool,
         answerNumber,
         issueFlagged: flagged,
+        flagNotes: flagged ? (flagNotes[q.questionId] ?? "").trim() || null : null,
       };
       for (const tid of q.templateIds) {
         const bucket = byTemplate.get(tid) ?? { templateId: tid, answers: [] };
@@ -202,6 +230,9 @@ export default function AngelRoundFlow({ template, rapidTemplates = [], onClose 
   if (step === "questions" && currentQuestion && currentResident) {
     const value = answers[currentQuestion.questionId];
     const isLast = qIndex === totalQ - 1;
+    const flaggedNow = computeFlag(currentQuestion, value);
+    const currentNote = (flagNotes[currentQuestion.questionId] ?? "").trim();
+    const currentBlocked = flaggedNow && !currentNote;
     return (
       <Screen>
         <Header
@@ -287,6 +318,41 @@ export default function AngelRoundFlow({ template, rapidTemplates = [], onClose 
           </div>
         )}
 
+        {flaggedNow && (
+          <div style={{ padding: "0 16px 12px" }}>
+            <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: "var(--red)", marginBottom: 5 }}>
+              Describe what you observed <span aria-hidden>*</span>
+            </label>
+            <textarea
+              value={flagNotes[currentQuestion.questionId] ?? ""}
+              onChange={(e) =>
+                setFlagNotes((n) => ({ ...n, [currentQuestion.questionId]: e.target.value }))
+              }
+              rows={3}
+              placeholder="What's happening that caused this to flag? The person resolving the issue will rely on this."
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                padding: "9px 11px",
+                borderRadius: 10,
+                border: `1px solid ${currentBlocked ? "var(--red)" : "var(--hair-strong)"}`,
+                background: "var(--surface)",
+                color: "var(--ink)",
+                fontSize: 13,
+                lineHeight: 1.45,
+                outline: "none",
+                resize: "vertical",
+                fontFamily: "inherit",
+              }}
+            />
+            {currentBlocked && (
+              <div style={{ fontSize: 10.5, color: "var(--red)", marginTop: 4 }}>
+                A description is required for flagged items before you can continue.
+              </div>
+            )}
+          </div>
+        )}
+
         <div style={{ padding: "0 16px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <button
             onClick={() => qIndex > 0 && setQIndex((i) => i - 1)}
@@ -296,19 +362,26 @@ export default function AngelRoundFlow({ template, rapidTemplates = [], onClose 
             <ArrowLeft size={12} /> Back
           </button>
           {isLast ? (
-            <button
-              onClick={submit}
-              disabled={value === undefined}
-              style={{ display: "flex", alignItems: "center", gap: 4, background: value === undefined ? "var(--hair-strong)" : "var(--blue)", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 600, cursor: value === undefined ? "not-allowed" : "pointer" }}
-            >
-              Submit <Check size={12} />
-            </button>
+            (() => {
+              const blocked = value === undefined || flaggedNoteMissing;
+              return (
+                <button
+                  onClick={submit}
+                  disabled={blocked}
+                  title={flaggedNoteMissing ? "Describe every flagged item before submitting" : undefined}
+                  style={{ display: "flex", alignItems: "center", gap: 4, background: blocked ? "var(--hair-strong)" : "var(--blue)", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 600, cursor: blocked ? "not-allowed" : "pointer" }}
+                >
+                  Submit <Check size={12} />
+                </button>
+              );
+            })()
           ) : (
             <button
-              onClick={() => setQIndex((i) => Math.min(totalQ - 1, i + 1))}
-              style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", color: "var(--blue)", fontSize: 12, fontWeight: 500, cursor: "pointer" }}
+              onClick={() => !currentBlocked && setQIndex((i) => Math.min(totalQ - 1, i + 1))}
+              disabled={currentBlocked}
+              style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", color: currentBlocked ? "var(--hair-strong)" : "var(--blue)", fontSize: 12, fontWeight: 500, cursor: currentBlocked ? "not-allowed" : "pointer" }}
             >
-              Skip <ArrowRight size={12} />
+              {value === undefined ? "Skip" : "Next"} <ArrowRight size={12} />
             </button>
           )}
         </div>

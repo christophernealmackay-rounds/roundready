@@ -214,6 +214,7 @@ export function mapIssue(i: S['IssueOut']): Issue {
     resolvedBy: i.resolved_by ?? undefined,
     resolvedByName: i.resolved_by_name ?? undefined,
     resolutionNotes: i.resolution_notes ?? undefined,
+    flagNotes: i.flag_notes ?? undefined,
     notifications: (i.notifications ?? []).map(mapIssueNotification),
   };
 }

@@ -106,6 +106,9 @@ class RoundAnswerSubmit(BaseModel):
     answer: bool | None = None
     answer_number: int | None = None
     issue_flagged: bool = False
+    # Angel's description of what they observed; required by submit_round
+    # when the answer flags (server recomputes the flag authoritatively).
+    flag_notes: str | None = None
 
 
 class RoundSubmit(BaseModel):
