@@ -723,3 +723,12 @@ Need: a flagged round answer gave the resolver no context (only question text). 
 ### 12.1 Process note — Ultraplan / teleport credential gap
 
 The Claude Code web (Ultraplan) session has no GitHub credentials, so it could neither push a branch nor open a PR, and `/teleport` never surfaced the session (it needs transferable committed changes). The credentialed steps (live Supabase `ALTER`, pytest against live DB, `gen:api`, reseed) are local-only by nature. **Habit:** for cross-stack work, treat the web session as design/scaffold-only; do the DB-touching + verification + PR locally.
+
+## Phase 13 — Code reviews performed, implementation deferred (2026-05-18)
+
+Three code-review audits have been performed and written up, but **none of their findings have been implemented yet**. This is a deliberate decision: the demo is working as-is and will be shown before any further code adjustments. These improvements will be made later, as part of getting ready to ship — not before the demo.
+
+- [x] **Backend audit** — `docs/backend-code-review.md`. Over-defensive programming + simplification opportunities. Verdict: backend already disciplined; 2 High / 4 Medium / 4 Low localized findings (dead SQLAlchemy DB layer, hand-rolled scale validator, fetch-then-404 boilerplate, etc.).
+- [x] **Database schema review** — `docs/database-schema-review.md`. Verdict: schema sound, portable with one trivial fix (RLS grants to Supabase-managed `authenticated` role). PKs zero issues, all domain FKs enforced; Medium: 16 FKs lack covering indexes; legacy `qaa_notes` table is dead.
+- [x] **Frontend code review** — `docs/frontend-code-review.md` (pre-existing).
+- [ ] **Implement review findings** — deferred until post-demo, before ship. Not started.
