@@ -156,6 +156,9 @@ export interface RoundAnswer {
   // Populated for scale questions; null for yes/no.
   answerNumber: number | null;
   issueFlagged: boolean;
+  // Angel's description of what they observed; required when this answer
+  // flags (enforced client-side + as a 422 server backstop).
+  flagNotes?: string | null;
 }
 
 export interface CompletedRound {
@@ -195,6 +198,8 @@ export interface Issue {
   resolvedBy?: string;
   resolvedByName?: string;
   resolutionNotes?: string;
+  // What the angel observed when the round answer flagged this issue.
+  flagNotes?: string;
   notifications?: IssueNotification[];
 }
 

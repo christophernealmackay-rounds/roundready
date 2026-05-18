@@ -561,6 +561,7 @@ export async function submitRound(input: {
     answer: boolean | null;
     answerNumber: number | null;
     issueFlagged: boolean;
+    flagNotes?: string | null;
   }[];
 }): Promise<CompletedRound> {
   const res = await api.POST('/api/v1/rounds', {
@@ -573,6 +574,7 @@ export async function submitRound(input: {
         answer: a.answer,
         answer_number: a.answerNumber,
         issue_flagged: a.issueFlagged,
+        flag_notes: a.flagNotes ?? null,
       })),
     },
   });

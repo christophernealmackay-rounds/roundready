@@ -619,6 +619,34 @@ async def run_seed(conn: asyncpg.Connection) -> dict:
         "Mood concern referred to social services; visit conducted.",
     ]
 
+    # What the rounding angel observed when the answer flagged. Required in
+    # the live flow; seeded here so resolving demo issues shows real context.
+    flag_notes_pool = [
+        "Resident found lying directly on the mattress with no pressure-relieving "
+        "device in place. Sacral area slightly pink but skin intact.",
+        "Bed left in high position with both side rails down; resident is a known "
+        "fall risk and was unattended.",
+        "Resident reported pain at 7/10 in the right hip during transfer; no PRN "
+        "had been offered this shift.",
+        "Heels resting flat on the bed without offloading boots or a pillow; small "
+        "non-blanchable redness noted on the left heel.",
+        "Call light was out of reach on the floor; resident said they had been "
+        "waiting about 20 minutes for assistance.",
+        "Resident's clothing was soiled and had not been changed since the prior "
+        "shift; skin under brief was reddened.",
+        "Water pitcher empty and out of reach; resident reported feeling thirsty "
+        "and had not been offered fluids this morning.",
+        "New bruising observed on the left forearm; resident unsure of cause and "
+        "no incident note was found.",
+        "Resident sitting in a wheelchair without the prescribed cushion; posture "
+        "slumped to the right.",
+        "Room floor wet near the bathroom doorway with no wet-floor sign posted.",
+        "Resident appeared withdrawn and tearful, declined to participate in "
+        "morning activities; no recent mood note on file.",
+        "Non-slip footwear not in use — resident ambulating in socks only on a "
+        "hard floor.",
+    ]
+
     issues_records: list[tuple] = []
     notifications_records: list[tuple] = []
     for idx, issue in enumerate(issues_capped):
@@ -637,6 +665,7 @@ async def run_seed(conn: asyncpg.Connection) -> dict:
             issue["completed_at"] + dt.timedelta(hours=rng.randint(2, 36)) if is_resolved else None,
             uuid.UUID(charge_id) if is_resolved else None,
             rng.choice(resolution_notes_pool) if is_resolved else None,
+            rng.choice(flag_notes_pool),
         ))
 
         # ---- issue_notifications: notify the responsible dept head + DON for every issue ----
@@ -665,7 +694,7 @@ async def run_seed(conn: asyncpg.Connection) -> dict:
             columns=[
                 "id", "round_id", "question_id", "resident_id", "angel_id",
                 "department_id", "status", "created_at", "resolved_at",
-                "resolved_by", "resolution_notes",
+                "resolved_by", "resolution_notes", "flag_notes",
             ],
         )
     if notifications_records:

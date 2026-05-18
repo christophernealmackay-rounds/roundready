@@ -252,7 +252,11 @@ CREATE TABLE issues (
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   resolved_at      TIMESTAMPTZ,
   resolved_by      UUID        REFERENCES users(id) ON DELETE SET NULL,
-  resolution_notes TEXT
+  resolution_notes TEXT,
+  -- Angel's free-text description of what they observed when the answer
+  -- flagged. Required at submit time (see submit_round). Symmetric with
+  -- resolution_notes (angel's side vs resolver's side).
+  flag_notes       TEXT
 );
 CREATE INDEX issues_status_idx     ON issues(status);
 CREATE INDEX issues_department_idx ON issues(department_id);

@@ -913,6 +913,8 @@ export interface components {
             resolved_by?: string | null;
             /** Resolution Notes */
             resolution_notes?: string | null;
+            /** Flag Notes */
+            flag_notes?: string | null;
             /** Resident Name */
             resident_name?: string | null;
             /** Room */
@@ -1427,6 +1429,8 @@ export interface components {
              * @default false
              */
             issue_flagged: boolean;
+            /** Flag Notes */
+            flag_notes?: string | null;
         };
         /** RoundOut */
         RoundOut: {

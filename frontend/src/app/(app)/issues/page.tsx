@@ -141,6 +141,12 @@ export default function IssuesPage() {
                       {issue.angelName} · {issue.department} · {fmtTime(issue.createdAt)} · {fmt(issue.createdAt)}
                     </div>
                     <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5 }}>{issue.questionText}</div>
+                    {issue.flagNotes && (
+                      <div style={{ marginTop: 8, paddingLeft: 10, borderLeft: "2px solid var(--blue-pale)", fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.5 }}>
+                        <span style={{ fontWeight: 600, color: "var(--blue)" }}>Angel observed: </span>
+                        {issue.flagNotes}
+                      </div>
+                    )}
                     {notifs.length > 0 && (
                       <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 8, fontSize: 11, color: "var(--muted)" }}>
                         <Bell size={11} />
@@ -181,6 +187,18 @@ export default function IssuesPage() {
               <div style={{ background: "var(--surface-alt)", borderRadius: 10, padding: "12px 14px", marginBottom: 14, fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5 }}>
                 {modalIssue.questionText}
               </div>
+
+              {/* What the angel observed — the context the resolver needs */}
+              {modalIssue.flagNotes && (
+                <div style={{ background: "var(--blue-wash)", border: "1px solid var(--blue-pale)", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: "var(--blue)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 5 }}>
+                    What the angel observed
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.55 }}>
+                    {modalIssue.flagNotes}
+                  </div>
+                </div>
+              )}
 
               {/* Notification trail */}
               {notifs.length > 0 && (

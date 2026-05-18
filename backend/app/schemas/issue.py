@@ -29,6 +29,7 @@ class IssueOut(BaseModel):
     resolved_at: datetime | None = None
     resolved_by: UUID | None = None
     resolution_notes: str | None = None
+    flag_notes: str | None = None
     # Display joins:
     resident_name: str | None = None
     room: str | None = None

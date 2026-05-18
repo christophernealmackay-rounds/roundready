@@ -20,6 +20,7 @@ import {
   mapUser,
 } from '@/lib/api/mappers';
 import { unwrap } from '@/lib/api/domain';
+import { computeFlag } from '@/components/round/AngelRoundFlow';
 import { findDuplicateDepartment } from '@/app/(app)/rounds/page';
 import { todayIsoDate, todayEndOfDay, todayStartOfDay, formatDate } from '@/lib/dates';
 import type { CompletedRound } from '@/lib/types';
@@ -551,5 +552,49 @@ describe('mappers', () => {
     });
     expect(g.type).toBe('wing');
     expect(g.memberIds).toEqual(['r1', 'r2', 'r3']);
+  });
+});
+
+describe('flag notes', () => {
+  const yesno = (issueOn: 'yes' | 'no' | 'either') =>
+    ({ type: 'yesno', issueOn, scaleThreshold: null, scaleThresholdDirection: null } as const);
+  const scale = (dir: 'gte' | 'lte', t: number) =>
+    ({ type: 'scale', issueOn: 'either', scaleThreshold: t, scaleThresholdDirection: dir } as const);
+
+  it('computeFlag: yes/no honors issueOn', () => {
+    expect(computeFlag(yesno('yes'), true)).toBe(true);
+    expect(computeFlag(yesno('yes'), false)).toBe(false);
+    expect(computeFlag(yesno('no'), false)).toBe(true);
+    expect(computeFlag(yesno('no'), true)).toBe(false);
+    expect(computeFlag(yesno('either'), true)).toBe(false);
+    expect(computeFlag(yesno('either'), false)).toBe(false);
+  });
+
+  it('computeFlag: scale honors threshold + direction', () => {
+    expect(computeFlag(scale('gte', 7), 7)).toBe(true);
+    expect(computeFlag(scale('gte', 7), 6)).toBe(false);
+    expect(computeFlag(scale('lte', 2), 2)).toBe(true);
+    expect(computeFlag(scale('lte', 2), 3)).toBe(false);
+  });
+
+  it('computeFlag: no answer never flags', () => {
+    expect(computeFlag(yesno('yes'), undefined)).toBe(false);
+    expect(computeFlag(scale('gte', 7), undefined)).toBe(false);
+  });
+
+  it('mapIssue carries flag_notes through to flagNotes', () => {
+    const base = {
+      id: 'i1', round_id: 'r1', question_id: 'q1', resident_id: 'res1',
+      angel_id: 'a1', department_id: 'd1', status: 'open' as const,
+      created_at: '2026-05-06T10:00:00Z', resolved_at: null, resolved_by: null,
+      resolution_notes: null, resident_name: 'A', room: '1', bed: 'A',
+      angel_name: 'B', department_name: 'Nursing', question_text: 'Q?',
+      resolved_by_name: null, notifications: [],
+    };
+    expect(mapIssue({ ...base, flag_notes: 'Heels not offloaded.' }).flagNotes)
+      .toBe('Heels not offloaded.');
+    // Absent / null → undefined (no UI callout rendered).
+    expect(mapIssue({ ...base, flag_notes: null }).flagNotes).toBeUndefined();
+    expect(mapIssue(base).flagNotes).toBeUndefined();
   });
 });
