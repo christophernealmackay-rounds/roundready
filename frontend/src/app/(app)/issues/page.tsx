@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Bell, X } from "lucide-react";
 import { useIssuesStore } from "@/lib/store/useIssuesStore";
 import { useUsersStore } from "@/lib/store/useUsersStore";
@@ -36,13 +36,29 @@ export default function IssuesPage() {
   const currentUser = useCurrentUser();
 
   const [flagFilter, setFlagFilter] = useState<FlagFilter>("open");
+  const [residentFilter, setResidentFilter] = useState<string>("all");
   const [modalIssue, setModalIssue] = useState<Issue | null>(null);
   const [notes, setNotes] = useState("");
   const [resolvedById, setResolvedById] = useState("");
 
-  const open     = issues.filter((i) => i.status === "open");
-  const resolved = issues.filter((i) => i.status === "resolved");
-  const displayed = flagFilter === "open" ? open : flagFilter === "resolved" ? resolved : issues;
+  // Residents that actually have issues, heaviest raisers first — directly
+  // surfaces who generates the most concerns.
+  const residentOptions = useMemo(() => {
+    const by = new Map<string, { name: string; room: string; bed: string; count: number }>();
+    for (const i of issues) {
+      const e = by.get(i.residentId) ?? { name: i.residentName, room: i.room, bed: i.bed, count: 0 };
+      e.count += 1;
+      by.set(i.residentId, e);
+    }
+    return [...by.entries()]
+      .map(([id, e]) => ({ id, label: `${e.name} · Rm ${e.room}${e.bed} (${e.count})`, count: e.count, name: e.name }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }, [issues]);
+
+  const scoped   = residentFilter === "all" ? issues : issues.filter((i) => i.residentId === residentFilter);
+  const open     = scoped.filter((i) => i.status === "open");
+  const resolved = scoped.filter((i) => i.status === "resolved");
+  const displayed = flagFilter === "open" ? open : flagFilter === "resolved" ? resolved : scoped;
 
   // Eligible resolvers: admins, charge nurses, and the department head of the
   // issue's department. The dropdown defaults to the current user.
@@ -107,14 +123,35 @@ export default function IssuesPage() {
         }
       />
 
-      {/* Filter pills */}
-      <div className="luxe-reveal-stagger" style={{ ["--i" as string]: 0, display: "flex", gap: 6 }}>
+      {/* Filter pills + resident filter */}
+      <div className="luxe-reveal-stagger" style={{ ["--i" as string]: 0, display: "flex", gap: 6, alignItems: "center" }}>
         {(["open","resolved","all"] as FlagFilter[]).map((f) => (
           <Pill key={f} active={flagFilter === f} onClick={() => setFlagFilter(f)}>
             {f.charAt(0).toUpperCase() + f.slice(1)}{" "}
-            {f === "open" ? `(${open.length})` : f === "resolved" ? `(${resolved.length})` : `(${issues.length})`}
+            {f === "open" ? `(${open.length})` : f === "resolved" ? `(${resolved.length})` : `(${scoped.length})`}
           </Pill>
         ))}
+        <select
+          value={residentFilter}
+          onChange={(e) => setResidentFilter(e.target.value)}
+          style={{
+            marginLeft: "auto",
+            padding: "8px 12px",
+            borderRadius: 8,
+            border: "1px solid var(--hair-strong)",
+            background: "var(--surface)",
+            fontSize: 12,
+            color: "var(--ink)",
+            outline: "none",
+            cursor: "pointer",
+            boxShadow: "var(--shadow-card)",
+          }}
+        >
+          <option value="all">All residents</option>
+          {residentOptions.map((o) => (
+            <option key={o.id} value={o.id}>{o.label}</option>
+          ))}
+        </select>
       </div>
 
       {/* Issue list */}

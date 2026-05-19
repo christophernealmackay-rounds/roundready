@@ -31,9 +31,24 @@ function ini(n: string) { return n.split(" ").map((p) => p[0]).join(""); }
 const DAY_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const TODAY = todayIsoDate();
 
+function isoDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [range, setRange] = useState<Range>("week");
+  // Dedicated, angel-only date window — independent of the global range pill.
+  // Defaults to a rolling 30-day window so the trend card is populated on load.
+  const [angelStart, setAngelStart] = useState<string>(() => {
+    const d = new Date(TODAY + "T00:00:00");
+    d.setDate(d.getDate() - 29);
+    return isoDate(d);
+  });
+  const [angelEnd, setAngelEnd] = useState<string>(() => TODAY);
   const completedRounds = useRoundsStore((s) => s.completedRounds);
   const templates = useRoundsStore((s) => s.templates);
   const issues = useIssuesStore((s) => s.issues);
@@ -47,7 +62,7 @@ export default function DashboardPage() {
   const activeResidents = residents.filter((r) => r.status === "active").length;
   const openIssues = issues.filter((i) => i.status === "open");
 
-  const { kpi, chartData, hourlyData, angelStats } = useMemo(() => {
+  const { kpi, chartData, hourlyData } = useMemo(() => {
     const now = new Date(TODAY + "T23:59:59");
     const startOfToday = new Date(TODAY + "T00:00:00");
 
@@ -65,7 +80,6 @@ export default function DashboardPage() {
     }
 
     // Active angel count for denominator
-    const activeAngels = angels.filter((a) => !a.absent);
     const assignedResidents = residents.filter((r) => r.status === "active" && r.angelId !== null);
     const expectedPerDay = assignedResidents.length;
 
@@ -160,20 +174,62 @@ export default function DashboardPage() {
       hourly.push({ h: h < 12 ? `${h}a` : "12p", n: roundsInRange(start, end).length });
     }
 
-    // Angel stats today
-    const stats = activeAngels.map((a) => {
-      const myResidents = residents.filter((r) => r.angelId === a.id && r.status === "active");
-      const done = todayRounds.filter((r) => r.angelId === a.id).length;
-      return { name: a.name, rounds: done, total: myResidents.length };
-    });
-
     return {
       kpi: kpiMap,
       chartData: chartDataMap,
       hourlyData: hourly,
-      angelStats: stats,
     };
   }, [completedRounds, issues, residents, angels, range]);
+
+  // Per-angel rounding trend over the dedicated angel window. Intentionally
+  // NOT keyed on `range` — this card is isolated from the global pill.
+  const angelTrends = useMemo(() => {
+    const start = new Date(`${angelStart}T00:00:00`);
+    const end = new Date(`${angelEnd}T23:59:59`);
+    const valid = end >= start;
+    const n = valid
+      ? Math.floor((end.getTime() - start.getTime()) / 86400000) + 1
+      : 0;
+
+    const rows = angels
+      .filter((a) => !a.absent)
+      .map((a) => {
+        const assigned = residents.filter(
+          (r) => r.status === "active" && r.angelId === a.id,
+        ).length;
+        const mine = valid
+          ? completedRounds.filter((r) => {
+              if (r.angelId !== a.id) return false;
+              const d = new Date(r.completedAt);
+              return d >= start && d <= end;
+            })
+          : [];
+        const rate =
+          assigned > 0 && valid
+            ? Math.round((mine.length / (assigned * n)) * 100)
+            : null;
+        const daily = Array.from({ length: n }, (_, i) => {
+          const dayStart = new Date(start);
+          dayStart.setDate(start.getDate() + i);
+          dayStart.setHours(0, 0, 0, 0);
+          const dayEnd = new Date(dayStart);
+          dayEnd.setHours(23, 59, 59, 999);
+          const done = mine.filter((r) => {
+            const d = new Date(r.completedAt);
+            return d >= dayStart && d <= dayEnd;
+          }).length;
+          return {
+            date: isoDate(dayStart),
+            cleanRate: assigned > 0 ? Math.round((done / assigned) * 100) : null,
+          };
+        });
+        return { id: a.id, name: a.name, rate, daily };
+      });
+
+    // Highest completion first; angels with no assigned residents sort last.
+    rows.sort((x, y) => (y.rate ?? -1) - (x.rate ?? -1));
+    return rows;
+  }, [completedRounds, residents, angels, angelStart, angelEnd]);
 
   // QAPI compliance KPI cards — live compliance rate per active QAPI in selected range
   const qapiKpis = useMemo(() => {
@@ -618,56 +674,75 @@ export default function DashboardPage() {
             </ResponsiveContainer>
           </RefinedCard>
 
-          {/* Angel completion + hourly mini */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <RefinedCard padding="14px 16px">
-              <SectionLabel accent="green" style={{ marginBottom: 12 }}>
-                Angel completion today
-              </SectionLabel>
-              {angelStats.map((a) => {
-                const pct = a.total > 0 ? Math.round((a.rounds / a.total) * 100) : 0;
-                const done = a.rounds === a.total && a.total > 0;
+          {/* Angel rounding trends — per-angel completion over a dedicated
+              custom window, independent of the global range pill. */}
+          <RefinedCard padding="14px 16px">
+            <SectionLabel
+              accent="green"
+              style={{ marginBottom: 12 }}
+              trailing={
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <input
+                    type="date"
+                    value={angelStart}
+                    onChange={(e) => setAngelStart(e.target.value)}
+                    style={{ padding: "5px 8px", borderRadius: 7, border: "1px solid var(--hair-strong)", background: "var(--surface)", fontSize: 11, color: "var(--ink)", outline: "none", fontFamily: "var(--font-mono)", boxShadow: "var(--shadow-card)" }}
+                  />
+                  <span style={{ fontSize: 10.5, color: "var(--muted)", fontStyle: "italic", fontFamily: "var(--font-display)" }}>through</span>
+                  <input
+                    type="date"
+                    value={angelEnd}
+                    onChange={(e) => setAngelEnd(e.target.value)}
+                    style={{ padding: "5px 8px", borderRadius: 7, border: "1px solid var(--hair-strong)", background: "var(--surface)", fontSize: 11, color: "var(--ink)", outline: "none", fontFamily: "var(--font-mono)", boxShadow: "var(--shadow-card)" }}
+                  />
+                </div>
+              }
+            >
+              Angel rounding trends
+            </SectionLabel>
+            {angelTrends.length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--muted)", textAlign: "center", padding: "24px 0", fontStyle: "italic", fontFamily: "var(--font-display)" }}>
+                No angels on duty
+              </div>
+            ) : (
+              angelTrends.map((a, idx, arr) => {
+                const rateColor = a.rate === null ? "var(--muted)" : a.rate >= 90 ? "var(--green)" : a.rate >= 75 ? "var(--amber-mid)" : "var(--red)";
+                const sparkAccent: "green" | "amber" | "red" = a.rate === null || a.rate >= 90 ? "green" : a.rate >= 75 ? "amber" : "red";
                 return (
-                  <div key={a.name} style={{ marginBottom: 10 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                  <div
+                    key={a.id}
+                    style={{
+                      borderBottom: idx < arr.length - 1 ? "1px solid var(--hair-soft)" : undefined,
+                      padding: idx === 0 ? "0 0 10px" : "10px 0",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                       <span style={{ fontSize: 12, fontWeight: 500, color: "var(--ink)" }}>
                         {a.name.split(" ")[0]} {a.name.split(" ")[1]?.[0]}.
                       </span>
-                      <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: done ? "var(--green)" : "var(--muted)", fontVariantNumeric: "tabular-nums", fontWeight: done ? 600 : 400 }}>
-                        {a.rounds}/{a.total}
+                      <span style={{ fontSize: 13, fontFamily: "var(--font-mono)", color: rateColor, fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
+                        {a.rate !== null ? `${a.rate}%` : "—"}
                       </span>
                     </div>
-                    <div style={{ height: 4, borderRadius: 999, background: "var(--hair-soft)", overflow: "hidden", boxShadow: "inset 0 1px 1px rgba(20,23,28,.05)" }}>
-                      <div
-                        style={{
-                          height: "100%",
-                          width: `${pct}%`,
-                          background: done
-                            ? "linear-gradient(90deg, var(--green-mid), var(--green))"
-                            : "linear-gradient(90deg, var(--blue-mid), var(--blue))",
-                          borderRadius: 999,
-                          transition: "width 600ms var(--ease-luxe-out)",
-                        }}
-                      />
-                    </div>
+                    <Sparkline data={a.daily} accent={sparkAccent} height={30} tooltip />
                   </div>
                 );
-              })}
-            </RefinedCard>
+              })
+            )}
+          </RefinedCard>
 
-            <RefinedCard padding="14px 16px">
-              <SectionLabel accent="blue" style={{ marginBottom: 12 }}>
-                Completions by hour <span style={{ textTransform: "lowercase", fontStyle: "italic", fontFamily: "var(--font-display)", letterSpacing: "0", fontWeight: 400 }}>· today</span>
-              </SectionLabel>
-              <ResponsiveContainer width="100%" height={94}>
-                <BarChart data={hourlyData} margin={{ top: 0, right: 0, bottom: 0, left: -28 }}>
-                  <XAxis dataKey="h" tick={{ fontSize: 9, fill: "var(--muted)" }} tickLine={false} axisLine={false} />
-                  <Tooltip content={<RefinedTooltip />} cursor={{ fill: "var(--blue-wash)" }} />
-                  <Bar dataKey="n" name="Rounds" fill="var(--blue-mid)" radius={[2,2,0,0]} maxBarSize={14} />
-                </BarChart>
-              </ResponsiveContainer>
-            </RefinedCard>
-          </div>
+          <RefinedCard padding="14px 16px">
+            <SectionLabel accent="blue" style={{ marginBottom: 12 }}>
+              Completions by hour <span style={{ textTransform: "lowercase", fontStyle: "italic", fontFamily: "var(--font-display)", letterSpacing: "0", fontWeight: 400 }}>· today</span>
+            </SectionLabel>
+            <ResponsiveContainer width="100%" height={94}>
+              <BarChart data={hourlyData} margin={{ top: 0, right: 0, bottom: 0, left: -28 }}>
+                <XAxis dataKey="h" tick={{ fontSize: 9, fill: "var(--muted)" }} tickLine={false} axisLine={false} />
+                <Tooltip content={<RefinedTooltip />} cursor={{ fill: "var(--blue-wash)" }} />
+                <Bar dataKey="n" name="Rounds" fill="var(--blue-mid)" radius={[2,2,0,0]} maxBarSize={14} />
+              </BarChart>
+            </ResponsiveContainer>
+          </RefinedCard>
         </div>
 
         {/* RIGHT column */}

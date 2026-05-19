@@ -262,25 +262,89 @@ html[data-app-fresh="true"] .luxe-reveal-body {
 }
 
 /* ─── Compliance report — Print styles ──────────────────────────────────
-   Deliberately a SEPARATE @media print block (not merged into the QAA
-   one above): Turbopack's dev server drops rules appended to the end of
-   a pre-existing @media block, so the report isolation must stand alone.
-   Reveals only the generated document and strips the card chrome so it
-   reads as a clean printed page / saved PDF. */
+   ONE standalone @media print block. Must NOT be merged into / appended
+   onto another @media block: Turbopack's dev server silently drops rules
+   added to a pre-existing block (same reason the QAA block stands alone).
+   Only BASIC selectors — Lightning CSS was observed dropping :has() rules.
+
+   The report MUST print in normal document flow. The previous approach
+   (visibility:hidden + position:absolute) took the report out of flow;
+   Chrome's paginator never painted it, producing a near-empty PDF
+   (proven: 5 KB, blank pages). Instead we hide the app chrome with
+   display:none using the stable structural layout:
+     body > div(app shell) > main(.flex-1) > div(reports column) > .report-print-target
+   and leave the report as ordinary block content, where break-inside is
+   honored across pages. */
 @media print {
-  body * {
-    visibility: hidden;
-  }
+  /* The QAA print block above sets a GLOBAL `body * { visibility:hidden }`.
+     Re-reveal the report or it prints blank. */
   .report-print-target,
   .report-print-target * {
-    visibility: visible;
+    visibility: visible !important;
+  }
+  /* Collapse the app chrome out of layout (no leading blank page). */
+  body > div > :not(main) {
+    display: none !important;        /* topbar / subnav inside the shell */
+  }
+  main > div > :not(.report-print-target) {
+    display: none !important;        /* page hero, builder card, prev reports */
+  }
+  /* Flatten flex/grid ancestors so the report is plain block flow
+     (flex/grid item fragmentation across pages is also unreliable). */
+  body,
+  body > div,
+  main,
+  main > div {
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+    min-height: 0 !important;
   }
   .report-print-target {
-    position: absolute;
-    inset: 0;
-    margin: 0;
+    position: static !important;
+    margin: 0 !important;
     border: none !important;
     box-shadow: none !important;
     background: #fff !important;
+  }
+  /* Preserve accent colors / tint backgrounds in the saved PDF. */
+  .report-print-target,
+  .report-print-target * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* Stack section containers so they paginate predictably. */
+  .report-print-target .report-aggregate,
+  .report-print-target .report-items {
+    display: block !important;
+  }
+  .report-print-target .report-item {
+    margin-bottom: 30px;
+    /* Keep a whole QAPI item together when it fits on a page; browsers
+       ignore this for items taller than a page (then row-level rules
+       below keep the split clean). */
+    break-inside: avoid;
+  }
+  /* Tables: break only between rows; repeat the header on each page. */
+  .report-print-target thead {
+    display: table-header-group;
+  }
+  .report-print-target tr {
+    break-inside: avoid;
+  }
+  /* Keep these blocks whole; never strand an item head at a page foot. */
+  .report-print-target .report-masthead,
+  .report-print-target .report-scorecard,
+  .report-print-target .report-item-head,
+  .report-print-target .report-footer {
+    break-inside: avoid;
+  }
+  .report-print-target .report-item-head {
+    break-after: avoid;
+  }
+  .report-print-target .recharts-responsive-container,
+  .report-print-target svg {
+    break-inside: avoid;
   }
 }

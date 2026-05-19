@@ -4,7 +4,9 @@
  * variations in a high (90–100%) clean rate are still visible.
  */
 "use client";
-import { Area, AreaChart, ResponsiveContainer, YAxis } from "recharts";
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { formatDate } from "@/lib/dates";
+import RefinedTooltip from "./RefinedTooltip";
 
 type AccentColor = "blue" | "green" | "amber" | "red" | "plum";
 
@@ -20,9 +22,11 @@ interface Props {
   data: { date: string; cleanRate: number | null }[];
   accent?: AccentColor;
   height?: number;
+  /** When set, hovering shows a date + percent tooltip on the point. */
+  tooltip?: boolean;
 }
 
-export default function Sparkline({ data, accent = "green", height = 36 }: Props) {
+export default function Sparkline({ data, accent = "green", height = 36, tooltip = false }: Props) {
   if (data.length < 2) {
     return <div style={{ height, opacity: 0 }} aria-hidden />;
   }
@@ -38,6 +42,7 @@ export default function Sparkline({ data, accent = "green", height = 36 }: Props
               <stop offset="100%" stopColor={stroke} stopOpacity={0} />
             </linearGradient>
           </defs>
+          {tooltip && <XAxis dataKey="date" hide />}
           <YAxis
             hide
             domain={[
@@ -45,15 +50,28 @@ export default function Sparkline({ data, accent = "green", height = 36 }: Props
               (max: number) => Math.min(100, Math.ceil(max + 2)),
             ]}
           />
+          {tooltip && (
+            <Tooltip
+              content={
+                <RefinedTooltip
+                  unit="%"
+                  formatLabel={(l) => formatDate(l)}
+                />
+              }
+              cursor={{ stroke: "var(--blue-mid)", strokeWidth: 1, strokeDasharray: "2 3" }}
+            />
+          )}
           <Area
             type="monotone"
             dataKey="cleanRate"
+            name="Completion"
             stroke={stroke}
             strokeWidth={1.5}
             fill={`url(#${gid})`}
             connectNulls
             isAnimationActive={false}
             dot={false}
+            activeDot={tooltip ? { r: 3, stroke, strokeWidth: 1.5, fill: "var(--surface)" } : false}
           />
         </AreaChart>
       </ResponsiveContainer>
