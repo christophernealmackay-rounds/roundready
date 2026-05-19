@@ -11,7 +11,7 @@ import { useResidentGroupsStore } from "@/lib/store/useResidentGroupsStore";
 import GroupPills from "@/components/groups/GroupPills";
 import { todayEndOfDay, todayIsoDate, formatDate } from "@/lib/dates";
 import { PageHero, SectionLabel, RefinedCard, KpiCard, RefinedTooltip, Pill } from "@/components/ui";
-import { qapiItemStats, qapiItemQuestionIds, recurringQuestions } from "@/lib/qapi/itemStats";
+import { qapiItemStats, qapiItemQuestionIds } from "@/lib/qapi/itemStats";
 
 type DateRange = "month" | "30" | "7" | "yesterday" | "custom";
 
@@ -37,6 +37,57 @@ const previousReports = [
   { name: "Jan 19–31, 2026 — surveyor prep", generated: "Feb 1", rounds: 186, rate: "95%", issues: 2 },
   { name: "January 2026 — all residents", generated: "Feb 1", rounds: 1240, rate: "88%", issues: 11 },
 ];
+
+/* Report print CSS injected as a literal <style> — NOT via globals.css.
+   The dev CSS pipeline (Turbopack/Lightning) was observed dropping the
+   compliance-report @media print block entirely, so the report printed
+   blank (the global `body * { visibility:hidden }` from the QAA print
+   block still applied). A literal <style> element cannot be dropped by
+   any bundler, guaranteeing the rules reach the browser.
+
+   Strategy: re-reveal the report (countering QAA's global hide), remove
+   the app chrome from layout with display:none (no leading blank page),
+   and print the report in NORMAL FLOW (position:static) so Chrome's
+   paginator actually paints and breaks it — an absolutely-positioned
+   subtree is not paginated by Chrome and produced an empty PDF. */
+const REPORT_PRINT_CSS = `
+@media print {
+  body * { visibility: hidden; }
+  .report-print-target, .report-print-target * { visibility: visible !important; }
+  body > div > :not(main) { display: none !important; }
+  main > div > :not(.report-print-target) { display: none !important; }
+  body, body > div, main, main > div {
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+    min-height: 0 !important;
+  }
+  .report-print-target {
+    position: static !important;
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #fff !important;
+  }
+  .report-print-target, .report-print-target * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .report-print-target .report-aggregate,
+  .report-print-target .report-items { display: block !important; }
+  .report-print-target .report-item { margin-bottom: 30px; break-inside: avoid; }
+  .report-print-target thead { display: table-header-group; }
+  .report-print-target tr { break-inside: avoid; }
+  .report-print-target .report-masthead,
+  .report-print-target .report-scorecard,
+  .report-print-target .report-item-head,
+  .report-print-target .report-footer { break-inside: avoid; }
+  .report-print-target .report-item-head { break-after: avoid; }
+  .report-print-target .recharts-responsive-container,
+  .report-print-target svg { break-inside: avoid; }
+}
+`;
 
 export default function ReportsPage() {
   const completedRounds = useRoundsStore((s) => s.completedRounds);
@@ -211,6 +262,21 @@ export default function ReportsPage() {
       return d >= start && d <= end && residentInScope(i.residentId);
     });
 
+    // Per-question issue rollup from the issues store (date + resident
+    // scoped). Match by questionId when present, else full question text.
+    function questionIssueCounts(qId: string | undefined, qText: string) {
+      const matched = issuesInRange.filter(
+        (i) => (qId && i.questionId === qId) || i.questionText === qText,
+      );
+      const raised = matched.length;
+      const resolvedN = matched.filter((i) => i.status === "resolved").length;
+      return {
+        raised,
+        resolved: resolvedN,
+        pct: raised > 0 ? Math.round((resolvedN / raised) * 100) : null,
+      };
+    }
+
     const resolved = issuesInRange.filter((i) => i.status === "resolved").length;
     const allAnswers = inRange.flatMap((r) => r.answers);
     const totalAnswers = allAnswers.length;
@@ -238,8 +304,11 @@ export default function ReportsPage() {
       const answers = inRange.flatMap((r) => r.answers.filter((a) => a.questionId === q.id));
       const yes = answers.filter((a) => a.answer).length;
       const no = answers.length - yes;
-      const iss = answers.filter((a) => a.issueFlagged).length;
-      return { question: q.text.length > 42 ? q.text.slice(0, 42) + "…" : q.text, yes, no, issues: iss };
+      const c = questionIssueCounts(q.id, q.text);
+      return {
+        question: q.text.length > 42 ? q.text.slice(0, 42) + "…" : q.text,
+        yes, no, issues: c.raised, resolved: c.resolved, pct: c.pct,
+      };
     }).filter((d) => d.yes + d.no > 0);
 
     // Per-QAPI-item report — clean rate, per-question breakdown, recurring.
@@ -256,13 +325,23 @@ export default function ReportsPage() {
           const roundsTouched = inRange.filter((r) =>
             r.answers.some((a) => qIds.has(a.questionId)),
           ).length;
+          // Re-base per-question issue counts to the issues store so the
+          // table's Issues/Resolved/% and the recurring callout are coherent.
+          const byQuestion = stats.byQuestion.map((q) => {
+            const c = questionIssueCounts(q.questionId, q.text);
+            return { ...q, issues: c.raised, resolved: c.resolved, pct: c.pct };
+          });
+          const recurring = byQuestion
+            .filter((q) => q.issues >= 3)
+            .sort((a, b) => b.issues - a.issues);
           return {
             qapiTitle: qapi.title,
             itemId: item.id,
             itemTitle: item.title,
             ...stats,
+            byQuestion,
             roundsTouched,
-            recurring: recurringQuestions(stats.byQuestion),
+            recurring,
           };
         }),
     ).filter((it) => effectiveItemId === "all" || it.itemId === effectiveItemId);
@@ -321,12 +400,12 @@ export default function ReportsPage() {
     );
     lines.push("");
     if (reportMode === "aggregate") {
-      lines.push("Question,Yes,No,Issues");
+      lines.push("Question,Yes,No,Issues,Resolved,Resolution %");
       for (const d of report.drilldown) {
-        lines.push([esc(d.question), d.yes, d.no, d.issues].join(","));
+        lines.push([esc(d.question), d.yes, d.no, d.issues, d.resolved, d.pct ?? ""].join(","));
       }
     } else {
-      lines.push("QAPI Item,Clean rate %,Answered,Flagged,Question,Yes,No,Issues");
+      lines.push("QAPI Item,Clean rate %,Answered,Flagged,Question,Yes,No,Issues,Resolved,Resolution %");
       for (const it of report.itemReport) {
         for (const q of it.byQuestion) {
           lines.push(
@@ -339,6 +418,8 @@ export default function ReportsPage() {
               q.yes,
               q.no,
               q.issues,
+              q.resolved,
+              q.pct ?? "",
             ].join(","),
           );
         }
@@ -357,6 +438,7 @@ export default function ReportsPage() {
 
   return (
     <div className="max-w-[1200px] mx-auto" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <style dangerouslySetInnerHTML={{ __html: REPORT_PRINT_CSS }} />
 
       <PageHero
         eyebrow="Reports · Compliance Documentation"
@@ -637,7 +719,7 @@ export default function ReportsPage() {
           }}
         >
           {/* Masthead */}
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 32, paddingBottom: 16, borderBottom: "2px solid var(--blue-ink)", marginBottom: 24, position: "relative" }}>
+          <div className="report-masthead" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 32, paddingBottom: 16, borderBottom: "2px solid var(--blue-ink)", marginBottom: 24, position: "relative" }}>
             <span aria-hidden style={{ position: "absolute", left: 0, bottom: -2, width: 80, height: 2, background: "var(--plum)" }} />
             <div>
               <div
@@ -690,7 +772,7 @@ export default function ReportsPage() {
           </div>
 
           {/* Scorecard summary — printed-document style row */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 0, marginBottom: 24, borderTop: "1px solid var(--hair)", borderBottom: "1px solid var(--hair)" }}>
+          <div className="report-scorecard" style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 0, marginBottom: 24, borderTop: "1px solid var(--hair)", borderBottom: "1px solid var(--hair)" }}>
             {[
               { label: "Rounds completed", value: String(report.rounds), accent: "ink" },
               { label: "Completion rate",  value: report.rate,           accent: "blue-deep" },
@@ -738,7 +820,7 @@ export default function ReportsPage() {
               By item: one section per QAPI item with scorecard, recurring
               callout, and a per-question table. */}
           {reportMode === "aggregate" ? (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
+          <div className="report-aggregate" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
             {/* QAPI compliance bar chart */}
             <div>
               <SectionLabel accent="blue" style={{ marginBottom: 14 }}>QAPI compliance rate</SectionLabel>
@@ -764,7 +846,7 @@ export default function ReportsPage() {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid var(--blue-ink)" }}>
-                      {["Question", "Yes", "No", "Issues"].map((h) => (
+                      {["Question", "Yes", "No", "Issues", "Resolved", "Res. %"].map((h) => (
                         <th key={h} style={{ textAlign: h === "Question" ? "left" : "right", padding: "6px 8px 10px", color: "var(--ink-soft)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.13em", fontSize: 9.5 }}>
                           {h}
                         </th>
@@ -778,6 +860,8 @@ export default function ReportsPage() {
                         <td style={{ padding: "9px 8px", textAlign: "right", fontFamily: "var(--font-mono)", color: "var(--green)", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{d.yes}</td>
                         <td style={{ padding: "9px 8px", textAlign: "right", fontFamily: "var(--font-mono)", color: d.no > 0 ? "var(--red)" : "var(--muted)", fontWeight: d.no > 0 ? 600 : 400, fontVariantNumeric: "tabular-nums" }}>{d.no}</td>
                         <td style={{ padding: "9px 8px", textAlign: "right", fontFamily: "var(--font-mono)", color: d.issues > 0 ? "var(--amber-mid)" : "var(--muted)", fontVariantNumeric: "tabular-nums" }}>{d.issues}</td>
+                        <td style={{ padding: "9px 8px", textAlign: "right", fontFamily: "var(--font-mono)", color: d.resolved > 0 ? "var(--green)" : "var(--muted)", fontWeight: d.resolved > 0 ? 600 : 400, fontVariantNumeric: "tabular-nums" }}>{d.resolved}</td>
+                        <td style={{ padding: "9px 8px", textAlign: "right", fontFamily: "var(--font-mono)", color: d.pct === null ? "var(--muted)" : d.pct >= 80 ? "var(--green)" : d.pct >= 50 ? "var(--amber-mid)" : "var(--red)", fontWeight: d.pct === null ? 400 : 600, fontVariantNumeric: "tabular-nums" }}>{d.pct === null ? "—" : `${d.pct}%`}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -786,7 +870,7 @@ export default function ReportsPage() {
             </div>
           </div>
           ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 30 }}>
+          <div className="report-items" style={{ display: "flex", flexDirection: "column", gap: 30 }}>
             {report.itemReport.length === 0 ? (
               <div style={{ fontSize: 12, color: "var(--muted)", textAlign: "center", padding: "32px 0", fontStyle: "italic", fontFamily: "var(--font-display)" }}>
                 No QAPI items with linked questions for this selection.
@@ -801,7 +885,8 @@ export default function ReportsPage() {
                 { label: "Rounds", value: String(it.roundsTouched), color: "var(--ink)" },
               ];
               return (
-                <div key={it.itemId}>
+                <div key={it.itemId} className="report-item">
+                  <div className="report-item-head">
                   <div style={{ marginBottom: 14 }}>
                     <div style={{ fontSize: 9.5, fontWeight: 600, color: "var(--plum)", textTransform: "uppercase", letterSpacing: "0.16em", marginBottom: 5 }}>
                       {it.qapiTitle}
@@ -841,6 +926,7 @@ export default function ReportsPage() {
                       </div>
                     </div>
                   )}
+                  </div>
 
                   <SectionLabel accent="amber" style={{ marginBottom: 12 }}>Per-question breakdown</SectionLabel>
                   {it.byQuestion.length === 0 ? (
@@ -851,7 +937,7 @@ export default function ReportsPage() {
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                       <thead>
                         <tr style={{ borderBottom: "1px solid var(--blue-ink)" }}>
-                          {["Question", "Yes", "No", "Issues"].map((h) => (
+                          {["Question", "Yes", "No", "Issues", "Resolved", "Res. %"].map((h) => (
                             <th key={h} style={{ textAlign: h === "Question" ? "left" : "right", padding: "6px 8px 10px", color: "var(--ink-soft)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.13em", fontSize: 9.5 }}>
                               {h}
                             </th>
@@ -865,6 +951,8 @@ export default function ReportsPage() {
                             <td style={{ padding: "9px 8px", textAlign: "right", fontFamily: "var(--font-mono)", color: "var(--green)", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{d.yes}</td>
                             <td style={{ padding: "9px 8px", textAlign: "right", fontFamily: "var(--font-mono)", color: d.no > 0 ? "var(--red)" : "var(--muted)", fontWeight: d.no > 0 ? 600 : 400, fontVariantNumeric: "tabular-nums" }}>{d.no}</td>
                             <td style={{ padding: "9px 8px", textAlign: "right", fontFamily: "var(--font-mono)", color: d.issues > 0 ? "var(--amber-mid)" : "var(--muted)", fontVariantNumeric: "tabular-nums" }}>{d.issues}</td>
+                            <td style={{ padding: "9px 8px", textAlign: "right", fontFamily: "var(--font-mono)", color: d.resolved > 0 ? "var(--green)" : "var(--muted)", fontWeight: d.resolved > 0 ? 600 : 400, fontVariantNumeric: "tabular-nums" }}>{d.resolved}</td>
+                            <td style={{ padding: "9px 8px", textAlign: "right", fontFamily: "var(--font-mono)", color: d.pct === null ? "var(--muted)" : d.pct >= 80 ? "var(--green)" : d.pct >= 50 ? "var(--amber-mid)" : "var(--red)", fontWeight: d.pct === null ? 400 : 600, fontVariantNumeric: "tabular-nums" }}>{d.pct === null ? "—" : `${d.pct}%`}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -877,7 +965,7 @@ export default function ReportsPage() {
           )}
 
           {/* Footer signature line */}
-          <div style={{ marginTop: 28, paddingTop: 18, borderTop: "1px solid var(--hair)", display: "flex", justifyContent: "space-between", gap: 20 }}>
+          <div className="report-footer" style={{ marginTop: 28, paddingTop: 18, borderTop: "1px solid var(--hair)", display: "flex", justifyContent: "space-between", gap: 20 }}>
             <div style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic", fontFamily: "var(--font-display)" }}>
               Reviewed by the QAA Committee. Source: angel rounds and round-answer logs across the selected window.
             </div>
