@@ -18,6 +18,7 @@ export default function ResidentsPage() {
   const { assignToAngel, unassignResident, autoAssign } = useResidentsStore();
   const angels = useAngelsStore((s) => s.angels);
   const groups = useResidentGroupsStore((s) => s.groups);
+  const deleteGroup = useResidentGroupsStore((s) => s.deleteGroup);
 
   const [search, setSearch] = useState("");
   const [resFilter, setResFilter] = useState<ResFilter>("all");
@@ -178,6 +179,11 @@ export default function ResidentsPage() {
         selectedId={groupFilter}
         onChange={setGroupFilter}
         onCreateClick={() => setGroupManagerOpen(true)}
+        onDelete={async (g) => {
+          if (!confirm(`Delete grouping "${g.name}"? This cannot be undone.`)) return;
+          if (groupFilter === g.id) setGroupFilter(null);
+          await deleteGroup(g.id);
+        }}
       />
 
       {/* Search + angel filter pills */}
