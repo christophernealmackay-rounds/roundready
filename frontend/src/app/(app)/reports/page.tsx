@@ -95,6 +95,27 @@ const REPORT_PRINT_CSS = `
 }
 `;
 
+/** Close `enabled`-state dropdowns when a mousedown lands outside `ref`.
+ *  Uses mousedown (not click) so it fires before the toggle button's own
+ *  click handler — clicking the toggle while open still closes cleanly
+ *  because the button lives inside the same ref wrapper. */
+function useClickOutside<T extends HTMLElement>(
+  enabled: boolean,
+  ref: React.RefObject<T | null>,
+  onOutside: () => void,
+) {
+  useEffect(() => {
+    if (!enabled) return;
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        onOutside();
+      }
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [enabled, ref, onOutside]);
+}
+
 export default function ReportsPage() {
   const completedRounds = useRoundsStore((s) => s.completedRounds);
   const templates = useRoundsStore((s) => s.templates);
@@ -204,6 +225,15 @@ export default function ReportsPage() {
   const [angelDdOpen, setAngelDdOpen] = useState(false);
   const [angelDdSearch, setAngelDdSearch] = useState("");
   const [deptDdOpen, setDeptDdOpen] = useState(false);
+
+  // Refs on each dropdown's outer wrapper. useClickOutside fires when the
+  // user mousedowns outside the wrapper and closes that dropdown.
+  const residentDdRef = useRef<HTMLDivElement>(null);
+  const angelDdRef = useRef<HTMLDivElement>(null);
+  const deptDdRef = useRef<HTMLDivElement>(null);
+  useClickOutside(ddOpen, residentDdRef, () => setDdOpen(false));
+  useClickOutside(angelDdOpen, angelDdRef, () => setAngelDdOpen(false));
+  useClickOutside(deptDdOpen, deptDdRef, () => setDeptDdOpen(false));
 
   const angelDept = useMemo(() => {
     const m = new Map<string, string>();
@@ -837,7 +867,7 @@ export default function ReportsPage() {
           </div>
 
           {/* Angel */}
-          <div style={{ position: "relative" }}>
+          <div ref={angelDdRef} style={{ position: "relative" }}>
             <SectionLabel accent="muted" style={{ marginBottom: 7 }}>Angel</SectionLabel>
             <button
               onClick={() => setAngelDdOpen((v) => !v)}
@@ -903,7 +933,7 @@ export default function ReportsPage() {
           </div>
 
           {/* Department */}
-          <div style={{ position: "relative" }}>
+          <div ref={deptDdRef} style={{ position: "relative" }}>
             <SectionLabel accent="muted" style={{ marginBottom: 7 }}>Department</SectionLabel>
             <button
               onClick={() => setDeptDdOpen((v) => !v)}
@@ -961,7 +991,7 @@ export default function ReportsPage() {
           </div>
 
           {/* Residents */}
-          <div style={{ position: "relative" }}>
+          <div ref={residentDdRef} style={{ position: "relative" }}>
             <SectionLabel accent="muted" style={{ marginBottom: 7 }}>Residents</SectionLabel>
             <button
               onClick={() => setDdOpen((v) => !v)}
