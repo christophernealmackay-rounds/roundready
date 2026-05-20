@@ -732,3 +732,167 @@ Three code-review audits have been performed and written up, but **none of their
 - [x] **Database schema review** — `docs/database-schema-review.md`. Verdict: schema sound, portable with one trivial fix (RLS grants to Supabase-managed `authenticated` role). PKs zero issues, all domain FKs enforced; Medium: 16 FKs lack covering indexes; legacy `qaa_notes` table is dead.
 - [x] **Frontend code review** — `docs/frontend-code-review.md` (pre-existing).
 - [ ] **Implement review findings** — deferred until post-demo, before ship. Not started.
+
+## Phase 14 — Dashboard angel trends, Reports filters/columns, PDF fix v2, schedule stub (2026-05-19/20)
+
+Branch **`feat/angel-flag-notes`** (continuing on the open Phase-12 PR). Three
+commits stacked ahead of `master`: `752498a` · `ef5fed6` · `f09d695`. Build
+clean, vitest **46/46**, pytest **79/79** untouched. Pushed; PR compare URL
+handed to the user (`gh` still unavailable locally).
+
+### 14.1 Dashboard — Angel rounding trends with a dedicated custom date range
+
+The dashboard's "Angel completion today" card was hard-coded to *today* and
+ignored the global Today/Week/Month pill (contradicting the CLAUDE.md spec).
+User wanted a custom date range scoped **only to angel rounding trends** —
+QAPI compliance cards must keep deferring to the QAPI lifecycle on Reports.
+
+- [x] **Dedicated control on the card** (start `<input type="date">` /
+  "through" / end), independent of the global pill. Defaults to a rolling
+  30-day window. Global pill + KPI row + both QAPI card sections provably
+  untouched.
+- [x] **Replaced** the "Angel completion today" card with **"Angel rounding
+  trends"** — per-angel completion rate over the window + per-angel
+  `Sparkline` of daily completion. Rows sorted by rate desc; angels with no
+  assigned residents render "—" and sort last.
+- [x] **`Sparkline.tsx`** gained an opt-in `tooltip` prop (hover shows date +
+  completion %, reusing `RefinedTooltip` + `formatDate`). QAPI item
+  sparklines unchanged (opt-in).
+- [x] Layout: removed the previous 2-col left grid; trends card is now
+  full-width above "Completions by hour".
+- [x] Removed dead `activeAngels` / `angelStats` computation (lint-clean).
+- [x] **`backend/scripts/backend-dev.ps1`** — one-line PowerShell launcher
+  using `py -m uvicorn` (Windows Store `python` alias is a broken stub here;
+  noted in memory). Sets `DEMO_MODE=true` by default; `-NoDemo` to opt out.
+
+### 14.2 Reports — Single QAPI-item filter dropdown + dashboard pre-filter
+
+By-item mode rendered every item with no way to narrow to one. Dashboard
+per-item KPI cards already passed `?qapiItem=<id>` but Reports only scoped to
+the parent QAPI, still showing all items.
+
+- [x] New **"QAPI item"** `<select>` (shown only in By-QAPI-item mode), mirrors
+  the QAPI dropdown styling. Options: "All items" + each item scoped to the
+  selected QAPI; labels prefixed with QAPI title when "All QAPIs" is chosen.
+- [x] **`/reports?qapiItem=<id>`** now pre-selects that exact item (still
+  editable on the page); QAPI lifecycle date auto-fill preserved.
+- [x] Hoisted `activeTemplate` to component scope so the dropdown and
+  `itemReport` share it; effective-id coercion guards stale selections.
+- [x] Changing the QAPI dropdown resets the item selection to "All items".
+
+### 14.3 Issues tab — Resident filter dropdown
+
+Status pills (Open / Resolved / All) were the only filter. User wanted a way
+to see all of one resident's issues — and rank "who raises the most".
+
+- [x] **All-residents dropdown** in the filter row. Options built from the
+  full `issues` list (only residents who actually have issues), labelled
+  `"{name} · Rm {room}{bed} ({count})"`, **sorted by issue count desc** then
+  name (heaviest raisers float to the top — directly answers "who raises the
+  most"). Composes with the status pills; pill counts re-scope to the
+  selected resident.
+
+### 14.4 Reports — Resolved + Resolution % columns on both per-question tables
+
+Per-question tables showed only the raised count. User decision (recorded in
+brainstorm): re-base **all three** columns to the Issues store so the row is
+internally coherent (resolved ≤ raised, % = resolved/raised).
+
+- [x] New `questionIssueCounts(qId, qText)` helper inside the `report` memo —
+  matches issues by `questionId` when present, else full `questionText`.
+  Uses the already-scoped `issuesInRange` (date + resident/group filters).
+- [x] Aggregate **"Question drilldown"** + by-item **"Per-question
+  breakdown"** tables: added **Resolved** (green-on-positive) and
+  **Res. %** (≥80 green / ≥50 amber / else red, "—" when no issues).
+- [x] **CSV export** extended with `Resolved,Resolution %` columns for both
+  report types.
+- [x] **Recurring questions (≥3 issues)** callout now re-based to the same
+  store-sourced count, so all surfaces agree. Removed unused
+  `recurringQuestions` import from `@/lib/qapi/itemStats`.
+
+### 14.5 Reports — Blank by-item PDF: deeper root cause (supersedes Phase 11)
+
+User reported the by-item Export PDF was *still* broken after Phase 11 — items
+"split in awkward ways". Phase 11's fix (move report rules to their own
+standalone `@media print` block) was correct as a partial mitigation but not
+sufficient. Resolved with the systematic-debugging skill end-to-end.
+
+**Recreation (proven via real Chrome / `Page.printToPDF`):** the by-item PDF
+came out **5,307 bytes, 2 pages, completely blank** — content existed in the
+DOM (`items: 3`, height 1597px) but was never painted into the print output.
+
+**Root cause (two layers, both proven):**
+
+1. **Pipeline rule-drop is more aggressive than previously thought.** Fetching
+   the served CSS bundle (`/_next/static/chunks/...`) showed the *entire*
+   compliance-report `@media print` block was missing in dev — even when
+   isolated in its own standalone block. Only the QAA `@media print` block
+   survived. Earlier checks intermittently showed advanced selectors
+   (`:has()`) being dropped by Lightning CSS; under load the whole report
+   block disappeared. Phase 11's assumption that a standalone block always
+   survives turned out not to be robust.
+2. **`position: absolute` is unsafe for paginated print.** Chrome's
+   paginator does not paint absolutely-positioned subtrees reliably across
+   pages — break-inside rules on descendants of an abspos box are ignored or
+   the content is dropped entirely. With the report's `visibility: visible`
+   reveal *also* dropped (effect of #1) the QAA block's global `body * {
+   visibility: hidden }` left nothing on the page → blank PDF.
+
+**Fix (durable, bundler-proof):**
+
+- [x] **Injected the report print CSS as a literal `<style>` element** inside
+  `reports/page.tsx` (`REPORT_PRINT_CSS` constant +
+  `<style dangerouslySetInnerHTML>` as the first child of the root). No
+  bundler can drop a literal style node — guaranteed delivery.
+- [x] **Print in normal flow** (`position: static`), hiding the app chrome
+  with `display: none` on structural sibling selectors (`body > div >
+  :not(main)`, `main > div > :not(.report-print-target)`). Flattens flex/grid
+  ancestors for predictable pagination.
+- [x] **Re-asserts `visibility: visible`** on `.report-print-target` to
+  counter QAA's global `body * { visibility: hidden }`.
+- [x] **Pagination rules:** `break-inside: avoid` on whole `.report-item`,
+  table rows, masthead/scorecard/item-head/footer; `break-after: avoid` on
+  item-head so the title/scorecard never strands at a page foot; `thead {
+  display: table-header-group }` so headers repeat when a long table spans
+  pages; `print-color-adjust: exact` so tints render.
+- [x] **DOM hooks:** wrapped each item's title + scorecard + recurring callout
+  in `.report-item-head`; added `.report-masthead`, `.report-scorecard`,
+  `.report-aggregate`, `.report-items`, `.report-item`, `.report-footer`.
+- [x] Globals.css block kept (with the same rules) as production fallback —
+  but the injected `<style>` is now the authoritative source.
+
+**Proof of fix (real Chrome / CDP):** by-item PDF jumped to **291,451 bytes,
+2 pages**. Captured page 1: masthead + top scorecard + item 1 complete and
+whole (head, recurring callout, full per-question table including the new
+Resolved / Res.% columns), then clean whitespace — item 2 pushed wholly to
+page 2 by `break-inside: avoid`. No torn rows, no split scorecards, no
+orphaned headers, colors render.
+
+### 14.6 Reports — "Schedule send" placeholder button + coming-soon modal
+
+Pure cosmetic addition signalling a future scheduled-delivery feature.
+
+- [x] Fourth action button next to Export PDF / Export CSV, secondary styling,
+  `CalendarClock` lucide icon.
+- [x] Click opens a centered modal over a dimmed backdrop (mirrors the
+  Issues-page overlay pattern at `issues/page.tsx:214`). Editorial-luxe
+  header (plum eyebrow "Reports · Automation", Fraunces italic title
+  "Schedule report delivery"), a non-functional mock form (disabled
+  Frequency dropdown + Recipients input), an amber-tint "Scheduled delivery
+  isn't available in this demo — this is a preview of an upcoming feature."
+  note, primary Close button.
+- [x] No backend, no logic, no persistence — inert by design.
+- [x] Verified via CDP: button rendered in the action row, click opens the
+  modal with the note, Close dismisses it.
+
+### 14.x Process notes
+
+- Two CSS-pipeline gotchas now documented in plan.md (Phase 11 + 14.5): for
+  print CSS on this stack, prefer a **literal `<style>` element** injected by
+  the component over relying on `globals.css` @media print blocks.
+- Windows `python` is a broken Microsoft Store alias on this dev machine;
+  the new `backend/scripts/backend-dev.ps1` uses the `py` launcher
+  (recorded in user memory as well).
+- `gh` CLI still not installed locally — PRs continue to be opened via the
+  GitHub compare URL handed to the user; the `github` plugin was installed
+  this session and may change that going forward.
