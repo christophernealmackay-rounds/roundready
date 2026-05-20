@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { Download, ChevronDown, Search, FileText } from "lucide-react";
+import { Download, ChevronDown, Search, FileText, CalendarClock } from "lucide-react";
 import { useRoundsStore } from "@/lib/store/useRoundsStore";
 import { useIssuesStore } from "@/lib/store/useIssuesStore";
 import { useQapiStore } from "@/lib/store/useQapiStore";
@@ -115,6 +115,8 @@ export default function ReportsPage() {
   const [rangeFromQapi, setRangeFromQapi] = useState(false);
   // By-item report scope: "all" = no item filter, else a specific item id.
   const [selectedItemId, setSelectedItemId] = useState<string>("all");
+  // Placeholder for a future scheduled-delivery feature (preview only).
+  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   // When a specific QAPI is selected, switch to a custom range that matches
   // its lifecycle (date_identified through actual_completion, or today if
@@ -701,6 +703,9 @@ export default function ReportsPage() {
           <button onClick={handleExportCsv} style={{ padding: "9px 14px", borderRadius: 8, border: "1px solid var(--hair-strong)", background: "var(--surface)", color: "var(--ink-soft)", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, boxShadow: "var(--shadow-card)" }}>
             <Download size={12} /> Export CSV
           </button>
+          <button onClick={() => setScheduleOpen(true)} style={{ padding: "9px 14px", borderRadius: 8, border: "1px solid var(--hair-strong)", background: "var(--surface)", color: "var(--ink-soft)", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, boxShadow: "var(--shadow-card)" }}>
+            <CalendarClock size={12} /> Schedule send
+          </button>
         </div>
       </RefinedCard>
 
@@ -1046,6 +1051,65 @@ export default function ReportsPage() {
           </div>
         ))}
       </RefinedCard>
+
+      {/* Schedule report send — preview of an upcoming feature (no backend) */}
+      {scheduleOpen && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.45)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setScheduleOpen(false); }}
+        >
+          <RefinedCard
+            padding="26px 30px"
+            style={{ width: 460, maxWidth: "92vw", background: "linear-gradient(180deg, var(--surface), var(--surface-alt))" }}
+          >
+            <div style={{ marginBottom: 16, paddingBottom: 12, borderBottom: "1px solid var(--hair-soft)" }}>
+              <div style={{ fontSize: 10, color: "var(--plum)", textTransform: "uppercase", letterSpacing: "0.18em", fontWeight: 600, marginBottom: 5 }}>
+                Reports · Automation
+              </div>
+              <div style={{ fontFamily: "var(--font-display)", fontStyle: "italic", fontSize: 21, fontWeight: 400, color: "var(--blue-ink)", letterSpacing: "-0.014em" }}>
+                Schedule report delivery
+              </div>
+            </div>
+
+            <p style={{ fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: 16 }}>
+              Automatically generate this report on a recurring schedule and email it to your QAA committee.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16, opacity: 0.55, pointerEvents: "none" }}>
+              <div>
+                <SectionLabel accent="muted" style={{ marginBottom: 6 }}>Frequency</SectionLabel>
+                <select disabled style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--hair-strong)", background: "var(--surface)", fontSize: 12, color: "var(--ink)", width: "100%", cursor: "not-allowed" }}>
+                  <option>Weekly — Monday 8:00 AM</option>
+                  <option>Daily</option>
+                  <option>Monthly — 1st</option>
+                </select>
+              </div>
+              <div>
+                <SectionLabel accent="muted" style={{ marginBottom: 6 }}>Recipients</SectionLabel>
+                <input
+                  disabled
+                  placeholder="qaa-committee@facility.org"
+                  style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--hair-strong)", background: "var(--surface)", fontSize: 12, color: "var(--ink)", width: "100%", boxSizing: "border-box", cursor: "not-allowed" }}
+                />
+              </div>
+            </div>
+
+            <div style={{ fontSize: 11.5, color: "var(--amber)", background: "var(--amber-tint)", border: "1px solid var(--amber-edge)", borderRadius: 8, padding: "9px 12px", marginBottom: 18, fontStyle: "italic", fontFamily: "var(--font-display)" }}>
+              Scheduled delivery isn&apos;t available in this demo — this is a preview of an upcoming feature.
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setScheduleOpen(false)}
+                style={{ padding: "9px 18px", borderRadius: 8, border: "none", background: "var(--blue)", color: "#fff", fontSize: 13, fontWeight: 500, cursor: "pointer", boxShadow: "inset 0 1px 0 rgba(255,255,255,.18), 0 1px 2px rgba(7,43,82,.18)" }}
+              >
+                Close
+              </button>
+            </div>
+          </RefinedCard>
+        </div>
+      )}
     </div>
   );
 }
