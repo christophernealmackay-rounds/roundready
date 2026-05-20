@@ -76,8 +76,13 @@ const REPORT_PRINT_CSS = `
     print-color-adjust: exact;
   }
   .report-print-target .report-aggregate,
-  .report-print-target .report-items { display: block !important; }
+  .report-print-target .report-items,
+  .report-print-target .report-detailed { display: block !important; }
   .report-print-target .report-item { margin-bottom: 30px; break-inside: avoid; }
+  .report-print-target .report-detailed .resident-section { break-inside: avoid-page; margin-bottom: 26px; }
+  .report-print-target .report-detailed .detailed-round { break-inside: avoid; }
+  .report-print-target .report-detailed .resident-head,
+  .report-print-target .report-detailed .round-head { break-after: avoid; }
   .report-print-target thead { display: table-header-group; }
   .report-print-target tr { break-inside: avoid; }
   .report-print-target .report-masthead,
@@ -106,7 +111,7 @@ export default function ReportsPage() {
 
   const [dateRange, setDateRange] = useState<DateRange>("month");
   const [selectedQapi, setSelectedQapi] = useState("All QAPIs");
-  const [reportMode, setReportMode] = useState<"aggregate" | "byItem">("aggregate");
+  const [reportMode, setReportMode] = useState<"aggregate" | "byItem" | "detailed">("aggregate");
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
   // Custom date inputs — also used to display the resolved range in the
   // generated report masthead when dateRange === 'custom'.
@@ -407,8 +412,118 @@ export default function ReportsPage() {
         }),
     ).filter((it) => effectiveItemId === "all" || it.itemId === effectiveItemId);
 
-    return { rounds: inRange.length, rate: `${rate}%`, issues: issuesInRange.length, resolved, missed: 0, qapiBars, drilldown, itemReport };
-  }, [completedRounds, issues, qapis, templates, questions, dateRange, customStart, customEnd, selectedQapi, selectedResidents, groupFilter, groups, activeTemplate, effectiveItemId, selectedAngels, selectedDepts, angelDept]);
+    // ─── Detailed activity log ────────────────────────────────────────────
+    // Surveyor-facing chronological view, grouped Resident → Date → Round.
+    // Reuses inRange / issuesInRange so every filter above already applies.
+
+    // Question-scope set. null means "no QAPI narrowing applied — show all
+    // answers". When a QAPI is chosen, restrict to its template sections'
+    // questions; when an item is also chosen, restrict further to that item.
+    let qIdsInScope: Set<string> | null = null;
+    if (selectedQapi !== "All QAPIs") {
+      const qapi = qapis.find((q) => q.title === selectedQapi);
+      const sections = qapi
+        ? activeTemplate?.sections.filter((s) => s.qapiId === qapi.id) ?? []
+        : [];
+      qIdsInScope = new Set(sections.flatMap((s) => s.questions.map((q) => q.questionId)));
+    }
+    if (effectiveItemId !== "all") {
+      const item = qapis.flatMap((q) => q.items).find((it) => it.id === effectiveItemId);
+      if (item) qIdsInScope = qapiItemQuestionIds(item, activeTemplate);
+    }
+
+    // Question metadata lookup: template wins (active wording + type), then
+    // the repository as a fallback for legacy answers.
+    const qMetaById = new Map<string, { text: string; type: "yesno" | "scale" }>();
+    for (const s of activeTemplate?.sections ?? []) {
+      for (const q of s.questions) qMetaById.set(q.questionId, { text: q.text, type: q.type });
+    }
+    for (const q of questions) {
+      if (!qMetaById.has(q.id)) qMetaById.set(q.id, { text: q.text, type: q.type });
+    }
+
+    const angelNameById = new Map<string, string>(angels.map((a) => [a.id, a.name]));
+    const residentById = new Map(residents.map((r) => [r.id, r]));
+
+    // (round, question) → Issue. Precise join — text-fallback intentionally
+    // omitted here so a surveyor packet never attaches the wrong resolution
+    // note to a question.
+    const issueByRoundQuestion = new Map<string, typeof issues[number]>();
+    for (const i of issuesInRange) {
+      if (i.roundId && i.questionId) {
+        issueByRoundQuestion.set(`${i.roundId}::${i.questionId}`, i);
+      }
+    }
+
+    const roundsByResident = new Map<string, typeof inRange>();
+    for (const r of inRange) {
+      const list = roundsByResident.get(r.residentId) ?? [];
+      list.push(r);
+      roundsByResident.set(r.residentId, list);
+    }
+
+    const detailed = [...roundsByResident.entries()]
+      .map(([residentId, rounds]) => {
+        const res = residentById.get(residentId);
+        if (!res) return null;
+        const detailedRounds = rounds
+          .slice()
+          .sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime())
+          .map((round) => {
+            const scopedAnswers = round.answers.filter(
+              (a) => !qIdsInScope || qIdsInScope.has(a.questionId),
+            );
+            if (scopedAnswers.length === 0) return null;
+            return {
+              roundId: round.id,
+              completedAt: round.completedAt,
+              angelName: angelNameById.get(round.angelId) ?? "—",
+              questions: scopedAnswers.map((a) => {
+                const meta = qMetaById.get(a.questionId) ?? { text: a.questionId, type: "yesno" as const };
+                const issue = issueByRoundQuestion.get(`${round.id}::${a.questionId}`) ?? null;
+                // For yes/no the value lives in `answer`; for scale it lives
+                // in `answerNumber`. Either way, null === skipped.
+                const value: boolean | number | null =
+                  a.answer !== null ? a.answer : a.answerNumber;
+                return {
+                  questionId: a.questionId,
+                  text: meta.text,
+                  type: meta.type,
+                  answer: value,
+                  issueFlagged: a.issueFlagged,
+                  flagNotes: a.flagNotes ?? null,
+                  issue: issue
+                    ? {
+                        id: issue.id,
+                        status: issue.status,
+                        department: issue.department,
+                        createdAt: issue.createdAt,
+                        resolvedAt: issue.resolvedAt,
+                        resolvedByName: issue.resolvedByName,
+                        resolutionNotes: issue.resolutionNotes,
+                      }
+                    : null,
+                };
+              }),
+            };
+          })
+          .filter((x): x is NonNullable<typeof x> => x !== null);
+        if (detailedRounds.length === 0) return null;
+        const permanentAngelId = res.angelId ?? res.originalAngelId;
+        return {
+          residentId,
+          name: res.name,
+          room: res.room,
+          bed: res.bed,
+          permanentAngelName: permanentAngelId ? angelNameById.get(permanentAngelId) : undefined,
+          rounds: detailedRounds,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null)
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return { rounds: inRange.length, rate: `${rate}%`, issues: issuesInRange.length, resolved, missed: 0, qapiBars, drilldown, itemReport, detailed };
+  }, [completedRounds, issues, qapis, templates, questions, dateRange, customStart, customEnd, selectedQapi, selectedResidents, groupFilter, groups, activeTemplate, effectiveItemId, selectedAngels, selectedDepts, angelDept, angels, residents]);
 
   // The generated document is shown once "Generate" was pressed or there's
   // data in range. Both the JSX gate and the print effect key off this.
@@ -416,7 +531,9 @@ export default function ReportsPage() {
     (generated || report.rounds > 0) &&
     (reportMode === "aggregate"
       ? report.qapiBars.length > 0
-      : report.itemReport.length > 0);
+      : reportMode === "byItem"
+      ? report.itemReport.length > 0
+      : report.detailed.length > 0);
 
   // Browser print-to-PDF. The @media print stylesheet isolates the
   // .report-print-target card; everything else is hidden. We wait until the
@@ -472,7 +589,7 @@ export default function ReportsPage() {
       for (const d of report.drilldown) {
         lines.push([esc(d.question), d.yes, d.no, d.issues, d.resolved, d.pct ?? ""].join(","));
       }
-    } else {
+    } else if (reportMode === "byItem") {
       lines.push("QAPI Item,Clean rate %,Answered,Flagged,Question,Yes,No,Issues,Resolved,Resolution %");
       for (const it of report.itemReport) {
         for (const q of it.byQuestion) {
@@ -490,6 +607,49 @@ export default function ReportsPage() {
               q.pct ?? "",
             ].join(","),
           );
+        }
+      }
+    } else {
+      // Detailed: one row per question per round. Surveyor packet shape.
+      lines.push(
+        "Date,Resident,Room,Angel,Question,Answer,Flagged,Flag Note,Issue Status,Department,Resolved At,Resolved By,Resolution Note",
+      );
+      for (const res of report.detailed) {
+        for (const round of res.rounds) {
+          const dateStr = new Date(round.completedAt).toISOString().slice(0, 10);
+          for (const q of round.questions) {
+            const ans = q.answer;
+            const answerCell =
+              ans === null
+                ? "—"
+                : typeof ans === "boolean"
+                ? ans ? "Yes" : "No"
+                : String(ans);
+            const issueStatus = q.issue ? q.issue.status : "";
+            const dept = q.issue ? q.issue.department : "";
+            const resolvedAt = q.issue?.resolvedAt
+              ? new Date(q.issue.resolvedAt).toISOString().slice(0, 10)
+              : "";
+            const resolvedBy = q.issue?.resolvedByName ?? "";
+            const resolutionNote = q.issue?.resolutionNotes ?? "";
+            lines.push(
+              [
+                dateStr,
+                esc(res.name),
+                esc(`${res.room}${res.bed}`),
+                esc(round.angelName),
+                esc(q.text),
+                esc(answerCell),
+                q.issueFlagged ? "Y" : "",
+                esc(q.flagNotes ?? ""),
+                issueStatus,
+                esc(dept),
+                resolvedAt,
+                esc(resolvedBy),
+                esc(resolutionNote),
+              ].join(","),
+            );
+          }
         }
       }
     }
@@ -633,8 +793,8 @@ export default function ReportsPage() {
             </select>
           </div>
 
-          {/* QAPI item — only meaningful for the by-item report */}
-          {reportMode === "byItem" && (
+          {/* QAPI item — narrows by-item and detailed reports */}
+          {(reportMode === "byItem" || reportMode === "detailed") && (
             <div>
               <SectionLabel accent="muted" style={{ marginBottom: 7 }}>QAPI item</SectionLabel>
               <select
@@ -669,6 +829,9 @@ export default function ReportsPage() {
               </Pill>
               <Pill active={reportMode === "byItem"} onClick={() => setReportMode("byItem")}>
                 By QAPI item
+              </Pill>
+              <Pill active={reportMode === "detailed"} onClick={() => setReportMode("detailed")}>
+                Detailed
               </Pill>
             </div>
           </div>
@@ -1020,7 +1183,8 @@ export default function ReportsPage() {
 
           {/* Aggregate: two columns — QAPI breakdown + question drilldown.
               By item: one section per QAPI item with scorecard, recurring
-              callout, and a per-question table. */}
+              callout, and a per-question table.
+              Detailed: surveyor-facing day-by-day log grouped by resident. */}
           {reportMode === "aggregate" ? (
           <div className="report-aggregate" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
             {/* QAPI compliance bar chart */}
@@ -1071,7 +1235,7 @@ export default function ReportsPage() {
               )}
             </div>
           </div>
-          ) : (
+          ) : reportMode === "byItem" ? (
           <div className="report-items" style={{ display: "flex", flexDirection: "column", gap: 30 }}>
             {report.itemReport.length === 0 ? (
               <div style={{ fontSize: 12, color: "var(--muted)", textAlign: "center", padding: "32px 0", fontStyle: "italic", fontFamily: "var(--font-display)" }}>
@@ -1163,6 +1327,150 @@ export default function ReportsPage() {
                 </div>
               );
             })}
+          </div>
+          ) : (
+          <div className="report-detailed">
+            <SectionLabel accent="blue" style={{ marginBottom: 14 }}>Detailed activity log</SectionLabel>
+            {report.detailed.length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--muted)", textAlign: "center", padding: "32px 0", fontStyle: "italic", fontFamily: "var(--font-display)" }}>
+                No rounds in this window for the selected filters.
+              </div>
+            ) : report.detailed.map((res) => (
+              <div key={res.residentId} className="resident-section" style={{ marginBottom: 30 }}>
+                {/* Resident head — name + room + permanent angel */}
+                <div className="resident-head" style={{ marginBottom: 14, paddingBottom: 10, borderBottom: "1px solid var(--hair)" }}>
+                  <div style={{ fontSize: 9.5, fontWeight: 600, color: "var(--plum)", textTransform: "uppercase", letterSpacing: "0.16em", marginBottom: 5 }}>
+                    Resident
+                  </div>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}>
+                    <div style={{ fontFamily: "var(--font-display)", fontSize: 19, fontWeight: 400, color: "var(--blue-ink)", letterSpacing: "-0.014em" }}>
+                      {res.name}
+                    </div>
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--muted)", letterSpacing: "0.04em" }}>
+                      Room {res.room}{res.bed}
+                    </div>
+                    {res.permanentAngelName && (
+                      <div style={{ fontSize: 11, color: "var(--ink-soft)", fontStyle: "italic", fontFamily: "var(--font-display)" }}>
+                        Permanent angel: {res.permanentAngelName}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Rounds for this resident */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                  {res.rounds.map((round) => (
+                    <div key={round.roundId} className="detailed-round">
+                      <div className="round-head" style={{ marginBottom: 8, display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--ink-soft)", fontFamily: "var(--font-mono)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                          {formatDate(round.completedAt)}
+                        </span>
+                        <span style={{ color: "var(--hair-strong)" }}>·</span>
+                        <span style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", fontFamily: "var(--font-display)" }}>
+                          performed by {round.angelName}
+                        </span>
+                      </div>
+
+                      {/* Question rows — grid layout so the flag/status columns
+                          line up across rounds; note rows below sit unaligned
+                          and indented under their question. */}
+                      <div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 70px 50px 180px", gap: 12, padding: "6px 0 9px", borderBottom: "1px solid var(--blue-ink)" }}>
+                          <span style={{ fontSize: 9.5, fontWeight: 600, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: "0.13em" }}>Question</span>
+                          <span style={{ fontSize: 9.5, fontWeight: 600, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: "0.13em", textAlign: "center" }}>Answer</span>
+                          <span style={{ fontSize: 9.5, fontWeight: 600, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: "0.13em", textAlign: "center" }}>Flag</span>
+                          <span style={{ fontSize: 9.5, fontWeight: 600, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: "0.13em" }}>Status</span>
+                        </div>
+                        {round.questions.map((q, qi) => {
+                          const isLast = qi === round.questions.length - 1;
+                          const ans = q.answer;
+                          const answerDisplay =
+                            ans === null
+                              ? "—"
+                              : typeof ans === "boolean"
+                              ? ans ? "Yes" : "No"
+                              : String(ans);
+                          const answerColor =
+                            ans === null
+                              ? "var(--muted)"
+                              : typeof ans === "boolean"
+                              ? ans ? "var(--green)" : "var(--red)"
+                              : "var(--ink)";
+                          const showResNote =
+                            q.issue && q.issue.status === "resolved" && q.issue.resolutionNotes;
+                          return (
+                            <div
+                              key={q.questionId}
+                              style={{
+                                padding: "9px 0",
+                                borderBottom: isLast ? undefined : "1px solid var(--hair-soft)",
+                              }}
+                            >
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 70px 50px 180px", gap: 12, alignItems: "baseline" }}>
+                                <span style={{ fontSize: 11.5, color: "var(--ink-soft)", lineHeight: 1.4 }}>{q.text}</span>
+                                <span style={{ fontSize: 11.5, fontWeight: 600, color: answerColor, fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums", textAlign: "center" }}>
+                                  {answerDisplay}
+                                </span>
+                                <span style={{ textAlign: "center", color: q.issueFlagged ? "var(--amber-mid)" : "var(--hair-strong)", fontSize: 13 }}>
+                                  {q.issueFlagged ? "⚠" : "—"}
+                                </span>
+                                <span>
+                                  {q.issue ? (
+                                    <span style={{
+                                      fontSize: 9.5,
+                                      fontWeight: 600,
+                                      padding: "3px 9px",
+                                      borderRadius: 999,
+                                      background: q.issue.status === "resolved" ? "var(--green-tint)" : "var(--amber-tint)",
+                                      color: q.issue.status === "resolved" ? "var(--green)" : "var(--amber)",
+                                      border: `1px solid ${q.issue.status === "resolved" ? "var(--green-edge)" : "var(--amber-edge)"}`,
+                                      letterSpacing: "0.06em",
+                                      textTransform: "uppercase",
+                                      whiteSpace: "nowrap",
+                                    }}>
+                                      {q.issue.status === "resolved" ? "Resolved" : `Open · ${q.issue.department}`}
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: "var(--hair-strong)" }}>—</span>
+                                  )}
+                                </span>
+                              </div>
+                              {(q.flagNotes || showResNote) && (
+                                <div style={{ marginTop: 6, paddingLeft: 14, display: "flex", flexDirection: "column", gap: 4 }}>
+                                  {q.flagNotes && (
+                                    <div style={{ fontSize: 11, color: "var(--ink-soft)", lineHeight: 1.5 }}>
+                                      <span style={{ color: "var(--plum)", marginRight: 6 }}>▸</span>
+                                      <span style={{ color: "var(--muted)", fontFamily: "var(--font-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.08em", marginRight: 7 }}>
+                                        Flag note
+                                      </span>
+                                      <span style={{ fontFamily: "var(--font-display)", fontStyle: "italic" }}>
+                                        &ldquo;{q.flagNotes}&rdquo;
+                                      </span>
+                                    </div>
+                                  )}
+                                  {showResNote && q.issue && (
+                                    <div style={{ fontSize: 11, color: "var(--ink-soft)", lineHeight: 1.5 }}>
+                                      <span style={{ color: "var(--plum)", marginRight: 6 }}>▸</span>
+                                      <span style={{ color: "var(--muted)", fontFamily: "var(--font-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.08em", marginRight: 7 }}>
+                                        Resolved{q.issue.resolvedAt ? ` ${formatDate(q.issue.resolvedAt)}` : ""}
+                                        {q.issue.resolvedByName ? ` by ${q.issue.resolvedByName}` : ""}
+                                      </span>
+                                      <span style={{ fontFamily: "var(--font-display)", fontStyle: "italic" }}>
+                                        &ldquo;{q.issue.resolutionNotes}&rdquo;
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
           )}
 
