@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { Download, ChevronDown, Search, FileText, CalendarClock } from "lucide-react";
@@ -8,6 +8,7 @@ import { useIssuesStore } from "@/lib/store/useIssuesStore";
 import { useQapiStore } from "@/lib/store/useQapiStore";
 import { useResidentsStore } from "@/lib/store/useResidentsStore";
 import { useResidentGroupsStore } from "@/lib/store/useResidentGroupsStore";
+import { useAngelsStore } from "@/lib/store/useAngelsStore";
 import GroupPills from "@/components/groups/GroupPills";
 import { todayEndOfDay, todayIsoDate, formatDate } from "@/lib/dates";
 import { PageHero, SectionLabel, RefinedCard, KpiCard, RefinedTooltip, Pill } from "@/components/ui";
@@ -97,6 +98,7 @@ export default function ReportsPage() {
   const qapis = useQapiStore((s) => s.qapis);
   const residents = useResidentsStore((s) => s.residents);
   const groups = useResidentGroupsStore((s) => s.groups);
+  const angels = useAngelsStore((s) => s.angels);
 
   const searchParams = useSearchParams();
   const qapiIdFromUrl = searchParams.get("qapi");
@@ -188,6 +190,53 @@ export default function ReportsPage() {
   const filteredRes = activeResidents.filter((r) => r.name.toLowerCase().includes(ddSearch.toLowerCase()));
   const allSelected = selectedResidents.size === activeResidents.length;
 
+  // Angel + department filters. Strict semantics: the Set IS the matching
+  // population — empty means "no rounds match". Initialized to all-ids once
+  // the angels list hydrates (see init effect below) so the report defaults
+  // to "All angels / All departments" without relying on a size-0 fallback.
+  const [selectedAngels, setSelectedAngels] = useState<Set<string>>(new Set());
+  const [selectedDepts, setSelectedDepts] = useState<Set<string>>(new Set());
+  const [angelDdOpen, setAngelDdOpen] = useState(false);
+  const [angelDdSearch, setAngelDdSearch] = useState("");
+  const [deptDdOpen, setDeptDdOpen] = useState(false);
+
+  const angelDept = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const a of angels) m.set(a.id, a.department);
+    return m;
+  }, [angels]);
+  const departmentList = useMemo(() => {
+    const set = new Set<string>();
+    for (const a of angels) if (a.department) set.add(a.department);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [angels]);
+  const sortedAngels = useMemo(
+    () => [...angels].sort((a, b) => a.name.localeCompare(b.name)),
+    [angels],
+  );
+  const filteredAngels = sortedAngels.filter((a) =>
+    a.name.toLowerCase().includes(angelDdSearch.toLowerCase()),
+  );
+  // One-shot init: fill the sets the first time the angels store has data.
+  // After that the user owns the selection — we don't re-fill on later
+  // angels updates (e.g. a new hire) so an explicit "Deselect all" stays.
+  const angelsInited = useRef(false);
+  const deptsInited = useRef(false);
+  useEffect(() => {
+    if (!angelsInited.current && sortedAngels.length > 0) {
+      setSelectedAngels(new Set(sortedAngels.map((a) => a.id)));
+      angelsInited.current = true;
+    }
+  }, [sortedAngels]);
+  useEffect(() => {
+    if (!deptsInited.current && departmentList.length > 0) {
+      setSelectedDepts(new Set(departmentList));
+      deptsInited.current = true;
+    }
+  }, [departmentList]);
+  const allAngelsSelected = sortedAngels.length > 0 && selectedAngels.size === sortedAngels.length;
+  const allDeptsSelected = departmentList.length > 0 && selectedDepts.size === departmentList.length;
+
   const dateRangePills: { id: DateRange; label: string }[] = [
     { id: "month",     label: "This month" },
     { id: "30",        label: "Last 30 days" },
@@ -254,14 +303,24 @@ export default function ReportsPage() {
       return groupOk && explicitOk;
     }
 
+    // Angel + department scope. The Set IS the matching population — empty
+    // means "no rounds match" (intentional after Deselect all). Department
+    // joins via the angel since rounds don't carry a department directly.
+    function angelInScope(angelId: string) {
+      const angelOk = selectedAngels.has(angelId);
+      const dept = angelDept.get(angelId);
+      const deptOk = dept !== undefined && selectedDepts.has(dept);
+      return angelOk && deptOk;
+    }
+
     const inRange = completedRounds.filter((r) => {
       const d = new Date(r.completedAt);
-      return d >= start && d <= end && residentInScope(r.residentId);
+      return d >= start && d <= end && residentInScope(r.residentId) && angelInScope(r.angelId);
     });
 
     const issuesInRange = issues.filter((i) => {
       const d = new Date(i.createdAt);
-      return d >= start && d <= end && residentInScope(i.residentId);
+      return d >= start && d <= end && residentInScope(i.residentId) && angelInScope(i.angelId);
     });
 
     // Per-question issue rollup from the issues store (date + resident
@@ -349,7 +408,7 @@ export default function ReportsPage() {
     ).filter((it) => effectiveItemId === "all" || it.itemId === effectiveItemId);
 
     return { rounds: inRange.length, rate: `${rate}%`, issues: issuesInRange.length, resolved, missed: 0, qapiBars, drilldown, itemReport };
-  }, [completedRounds, issues, qapis, templates, questions, dateRange, customStart, customEnd, selectedQapi, selectedResidents, groupFilter, groups, activeTemplate, effectiveItemId]);
+  }, [completedRounds, issues, qapis, templates, questions, dateRange, customStart, customEnd, selectedQapi, selectedResidents, groupFilter, groups, activeTemplate, effectiveItemId, selectedAngels, selectedDepts, angelDept]);
 
   // The generated document is shown once "Generate" was pressed or there's
   // data in range. Both the JSX gate and the print effect key off this.
@@ -397,6 +456,13 @@ export default function ReportsPage() {
         : dateRange;
     const lines: string[] = [];
     lines.push(`Compliance report,${selectedQapi},${rangeLabel}`);
+    const angelScope = allAngelsSelected
+      ? "All angels"
+      : sortedAngels.filter((a) => selectedAngels.has(a.id)).map((a) => a.name).join("; ");
+    const deptScope = allDeptsSelected
+      ? "All departments"
+      : [...selectedDepts].sort().join("; ");
+    lines.push(`Angels,${esc(angelScope)},Departments,${esc(deptScope)}`);
     lines.push(
       `Rounds completed,${report.rounds},Completion rate,${report.rate},Issues raised,${report.issues},Issues resolved,${report.resolved}`,
     );
@@ -607,6 +673,130 @@ export default function ReportsPage() {
             </div>
           </div>
 
+          {/* Angel */}
+          <div style={{ position: "relative" }}>
+            <SectionLabel accent="muted" style={{ marginBottom: 7 }}>Angel</SectionLabel>
+            <button
+              onClick={() => setAngelDdOpen((v) => !v)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid var(--hair-strong)",
+                background: "var(--surface)",
+                fontSize: 12,
+                color: "var(--ink)",
+                outline: "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                minWidth: 160,
+                boxShadow: "var(--shadow-card)",
+              }}
+            >
+              {allAngelsSelected ? "All angels" : `${selectedAngels.size} selected`}
+              <ChevronDown size={12} style={{ marginLeft: "auto" }} />
+            </button>
+            {angelDdOpen && (
+              <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 50, background: "var(--surface)", border: "1px solid var(--hair-strong)", borderRadius: 10, padding: 10, width: 220, boxShadow: "var(--shadow-lg)", marginTop: 4 }}>
+                <div style={{ position: "relative", marginBottom: 8 }}>
+                  <Search size={11} style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
+                  <input
+                    value={angelDdSearch}
+                    onChange={(e) => setAngelDdSearch(e.target.value)}
+                    style={{ width: "100%", padding: "6px 8px 6px 24px", borderRadius: 7, border: "1px solid var(--hair)", background: "var(--surface-alt)", fontSize: 12, color: "var(--ink)", outline: "none", boxSizing: "border-box" }}
+                    placeholder="Search…"
+                  />
+                </div>
+                <div
+                  style={{ fontSize: 11, color: "var(--blue)", cursor: "pointer", marginBottom: 6, fontWeight: 500 }}
+                  onClick={() => setSelectedAngels(allAngelsSelected ? new Set() : new Set(sortedAngels.map((a) => a.id)))}
+                >
+                  {allAngelsSelected ? "Deselect all" : "Select all"}
+                </div>
+                <div style={{ maxHeight: 180, overflowY: "auto" }}>
+                  {filteredAngels.map((a) => {
+                    const checked = selectedAngels.has(a.id);
+                    return (
+                      <div
+                        key={a.id}
+                        onClick={() => setSelectedAngels((prev) => {
+                          const base = new Set(prev);
+                          base.has(a.id) ? base.delete(a.id) : base.add(a.id);
+                          return base;
+                        })}
+                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 4px", cursor: "pointer", borderRadius: 5, fontSize: 12, color: "var(--ink-soft)" }}
+                      >
+                        <input type="checkbox" checked={checked} onChange={() => {}} style={{ cursor: "pointer" }} />
+                        <span style={{ flex: 1 }}>{a.name}</span>
+                        <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--muted)" }}>{a.department}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <button onClick={() => setAngelDdOpen(false)} style={{ width: "100%", marginTop: 8, padding: "6px 0", borderRadius: 7, border: "none", background: "var(--blue)", color: "#fff", fontSize: 12, fontWeight: 500, cursor: "pointer" }}>Done</button>
+              </div>
+            )}
+          </div>
+
+          {/* Department */}
+          <div style={{ position: "relative" }}>
+            <SectionLabel accent="muted" style={{ marginBottom: 7 }}>Department</SectionLabel>
+            <button
+              onClick={() => setDeptDdOpen((v) => !v)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid var(--hair-strong)",
+                background: "var(--surface)",
+                fontSize: 12,
+                color: "var(--ink)",
+                outline: "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                minWidth: 160,
+                boxShadow: "var(--shadow-card)",
+              }}
+            >
+              {allDeptsSelected ? "All departments" : `${selectedDepts.size} selected`}
+              <ChevronDown size={12} style={{ marginLeft: "auto" }} />
+            </button>
+            {deptDdOpen && (
+              <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 50, background: "var(--surface)", border: "1px solid var(--hair-strong)", borderRadius: 10, padding: 10, width: 200, boxShadow: "var(--shadow-lg)", marginTop: 4 }}>
+                <div
+                  style={{ fontSize: 11, color: "var(--blue)", cursor: "pointer", marginBottom: 6, fontWeight: 500 }}
+                  onClick={() => setSelectedDepts(allDeptsSelected ? new Set() : new Set(departmentList))}
+                >
+                  {allDeptsSelected ? "Deselect all" : "Select all"}
+                </div>
+                <div style={{ maxHeight: 200, overflowY: "auto" }}>
+                  {departmentList.length === 0 ? (
+                    <div style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic", padding: "6px 4px" }}>No departments</div>
+                  ) : departmentList.map((d) => {
+                    const checked = selectedDepts.has(d);
+                    return (
+                      <div
+                        key={d}
+                        onClick={() => setSelectedDepts((prev) => {
+                          const base = new Set(prev);
+                          base.has(d) ? base.delete(d) : base.add(d);
+                          return base;
+                        })}
+                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 4px", cursor: "pointer", borderRadius: 5, fontSize: 12, color: "var(--ink-soft)" }}
+                      >
+                        <input type="checkbox" checked={checked} onChange={() => {}} style={{ cursor: "pointer" }} />
+                        {d}
+                      </div>
+                    );
+                  })}
+                </div>
+                <button onClick={() => setDeptDdOpen(false)} style={{ width: "100%", marginTop: 8, padding: "6px 0", borderRadius: 7, border: "none", background: "var(--blue)", color: "#fff", fontSize: 12, fontWeight: 500, cursor: "pointer" }}>Done</button>
+              </div>
+            )}
+          </div>
+
           {/* Residents */}
           <div style={{ position: "relative" }}>
             <SectionLabel accent="muted" style={{ marginBottom: 7 }}>Residents</SectionLabel>
@@ -773,6 +963,13 @@ export default function ReportsPage() {
               <div style={{ color: "var(--blue)", marginTop: 4, fontWeight: 600, letterSpacing: "0.04em" }}>
                 {selectedResidents.size === 0 || allSelected ? `${activeResidents.length} residents` : `${selectedResidents.size} residents`}
               </div>
+              {(!allAngelsSelected || !allDeptsSelected) && (
+                <div style={{ color: "var(--plum)", marginTop: 2, fontStyle: "italic", fontFamily: "var(--font-display)", letterSpacing: 0 }}>
+                  {!allAngelsSelected && `${selectedAngels.size} angel${selectedAngels.size === 1 ? "" : "s"}`}
+                  {!allAngelsSelected && !allDeptsSelected && " · "}
+                  {!allDeptsSelected && `${selectedDepts.size} dept${selectedDepts.size === 1 ? "" : "s"}`}
+                </div>
+              )}
             </div>
           </div>
 
