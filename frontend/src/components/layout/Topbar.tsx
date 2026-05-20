@@ -123,7 +123,7 @@ export default function Topbar() {
                 boxShadow: "0 0 0 2px rgba(255,255,255,0.18)",
               }}
             />
-            RoundReady
+            <span>Round<em style={{ fontStyle: "italic", fontWeight: 400 }}>Ready</em></span>
           </span>
           <span style={{ fontSize: 11, fontWeight: 400, letterSpacing: "0.005em", color: "rgba(255,255,255,0.35)" }}>|</span>
           <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,0.62)", letterSpacing: "0.13em", textTransform: "uppercase" }}>
