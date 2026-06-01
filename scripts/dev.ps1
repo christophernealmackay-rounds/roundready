@@ -84,10 +84,17 @@ function Stop-Stack {
         return
     }
     foreach ($procId in $seen.Keys) {
-        $name = (Get-Process -Id $procId -ErrorAction SilentlyContinue).ProcessName
-        Write-Host "[stop] taskkill /F /T /PID $procId  ($name)"
-        & taskkill /F /T /PID $procId 2>&1 | Out-Null
+        $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
+        if (-not $proc) { continue }   # already gone (often a child of a parent we just killed)
+        Write-Host "[stop] taskkill /F /T /PID $procId  ($($proc.ProcessName))"
+        # Redirect both streams to $null so taskkill's "process not found" output
+        # from a child that already exited (because we just killed its parent)
+        # doesn't surface as a NativeCommandError in the caller's shell.
+        cmd.exe /c "taskkill /F /T /PID $procId >nul 2>&1" | Out-Null
     }
+    # Don't propagate taskkill's exit-128 ("process not found") to the caller -
+    # for our purposes, the process being gone is success.
+    $global:LASTEXITCODE = 0
     Start-Sleep -Milliseconds 900
 }
 
