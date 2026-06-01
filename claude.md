@@ -150,6 +150,8 @@ Font features: cv11, ss01, ss02 enabled on body; ss01 on logo.
 - **Backend:** FastAPI / Python 3.12 / Pydantic v2 / asyncpg + PostgREST. Lives under `backend/`. Routes under `backend/app/api/v1/*`.
 - **DB:** Supabase Postgres. Schema source of truth is `db/schema.sql` (alembic is dormant — don't add migrations without explicit ask).
 - **Local dev:** `make backend-dev` + `make frontend-dev` (or `docker-compose up`). Backend needs `DEMO_MODE=true` for the seed-reset endpoint.
+- **Demo stack (Windows):** `.\scripts\dev.ps1 start|stop|restart|reseed|status` — one-command lifecycle for backend + frontend together. Handles uvicorn parent/worker process trees so restarts don't leave zombies; sets `DEMO_MODE=true` automatically. Use this for demos and quick local cycles; `make backend-dev` is still the right path when you want `--reload` hot-reloading during development.
+- **Supabase free-tier pauses after ~7 days of inactivity.** If `getaddrinfo failed` (DNS gone) or `tenant ... not found` (pooler can't resolve project) appear in backend logs, the project is paused — restore from the Supabase dashboard or via `mcp__plugin_supabase_supabase__restore_project` and wait ~2 min for `ACTIVE_HEALTHY`.
 
 ### What is built
 
