@@ -286,8 +286,11 @@ html[data-app-fresh="true"] .luxe-reveal-body {
   body > div > :not(main) {
     display: none !important;        /* topbar / subnav inside the shell */
   }
-  main > div > :not(.report-print-target) {
+  main > div > :not(.report-print-target):not(.qaa-print-target) {
     display: none !important;        /* page hero, builder card, prev reports */
+    /* :not(.qaa-print-target) — this block is global to @media print, so
+       without the exclusion it also collapses the QAA notes print target
+       (also a main > div child), printing blank. */
   }
   /* Flatten flex/grid ancestors so the report is plain block flow
      (flex/grid item fragmentation across pages is also unreliable). */
